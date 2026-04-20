@@ -1,0 +1,7 @@
+../UserCode/SD_Card.c:22:9:SD_initAndMount	24	static
+../UserCode/SD_Card.c:60:9:SD_read	48	static
+../UserCode/SD_Card.c:95:9:SD_createAndOpenFile	16	static
+../UserCode/SD_Card.c:111:9:SD_openFileForWriting	16	static
+../UserCode/SD_Card.c:126:9:SD_writeToOpenedFile	24	static
+../UserCode/SD_Card.c:142:9:SD_closeFile	8	static
+../UserCode/SD_Card.c:147:9:SD_unmount	8	static

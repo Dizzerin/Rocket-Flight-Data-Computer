@@ -1,0 +1,5 @@
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:72:9:lsm6_init	3
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:118:9:lsm6_getAndPrintData	5
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:198:16:platform_write	1
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:218:16:platform_read	1
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:236:13:tx_com	1
