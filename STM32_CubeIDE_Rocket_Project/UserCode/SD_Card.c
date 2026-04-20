@@ -10,7 +10,9 @@
 #include <string.h>
 #include "SD_Card.h"
 #include "fatfs.h"
+#include "stm32h7xx_hal.h" /* Provide the low-level HAL functions - GPIO pin for SD_CARD_DETECT*/
 
+// TODO implement SD_CARD_DETECT (active low I believe)
 
 // Local globals vars
 //some variables for FatFs

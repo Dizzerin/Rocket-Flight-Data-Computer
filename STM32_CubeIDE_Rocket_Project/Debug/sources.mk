@@ -31,4 +31,5 @@ Middlewares/ST/lsm6dso \
 Middlewares/Third_Party/FatFs/src \
 Middlewares/Third_Party/FatFs/src/option \
 UserCode \
+Drivers/CMSIS/Device/ST/STM32H7xx/Source/Templates \
 

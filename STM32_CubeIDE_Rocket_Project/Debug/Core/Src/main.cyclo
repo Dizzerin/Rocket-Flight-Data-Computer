@@ -8,5 +8,5 @@
 ../Core/Src/main.c:404:13:MX_SPI3_Init	2
 ../Core/Src/main.c:452:13:MX_USART3_UART_Init	5
 ../Core/Src/main.c:500:13:MX_GPIO_Init	1
-../Core/Src/main.c:557:6:MPU_Config	1
-../Core/Src/main.c:588:6:Error_Handler	1
+../Core/Src/main.c:563:6:MPU_Config	1
+../Core/Src/main.c:594:6:Error_Handler	1

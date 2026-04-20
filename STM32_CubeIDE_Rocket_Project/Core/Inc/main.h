@@ -62,6 +62,8 @@ void myprintf(const char *fmt, ...);
 #define LSM6DSO_CS_GPIO_Port GPIOA
 #define SD_CS_Pin GPIO_PIN_12
 #define SD_CS_GPIO_Port GPIOB
+#define SD_CARD_DETECT_Pin GPIO_PIN_8
+#define SD_CARD_DETECT_GPIO_Port GPIOA
 #define BME680_CS_Pin GPIO_PIN_9
 #define BME680_CS_GPIO_Port GPIOA
 #define BUZZER_PIN_Pin GPIO_PIN_10
