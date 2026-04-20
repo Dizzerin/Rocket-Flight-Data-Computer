@@ -40,34 +40,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := STM32_SPI_SD_Card
+BUILD_ARTIFACT_NAME := STM32_CubeIDE_Rocket_Project
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-STM32_SPI_SD_Card.elf \
+STM32_CubeIDE_Rocket_Project.elf \
 
 MAP_FILES += \
-STM32_SPI_SD_Card.map \
+STM32_CubeIDE_Rocket_Project.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-STM32_SPI_SD_Card.list \
+STM32_CubeIDE_Rocket_Project.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: STM32_SPI_SD_Card.elf secondary-outputs
+main-build: STM32_CubeIDE_Rocket_Project.elf secondary-outputs
 
 # Tool invocations
-STM32_SPI_SD_Card.elf STM32_SPI_SD_Card.map: $(OBJS) $(USER_OBJS) /home/caleb/Documents/Work/Wyzant\ Tutoring/Nicholas\ Chang\ PCB/STM32_SPI_SD_Card_V11/STM32H743VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "STM32_SPI_SD_Card.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"/home/caleb/Documents/Work/Wyzant Tutoring/Nicholas Chang PCB/STM32_SPI_SD_Card_V11/STM32H743VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32_SPI_SD_Card.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+STM32_CubeIDE_Rocket_Project.elf STM32_CubeIDE_Rocket_Project.map: $(OBJS) $(USER_OBJS) /home/caleb/Documents/Work/Wyzant\ Tutoring/Nicholas\ Chang\ PCB/Rocket-Flight-Data-Computer/STM32_SPI_SD_Card_V11/STM32H743VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "STM32_CubeIDE_Rocket_Project.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"/home/caleb/Documents/Work/Wyzant Tutoring/Nicholas Chang PCB/Rocket-Flight-Data-Computer/STM32_SPI_SD_Card_V11/STM32H743VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32_CubeIDE_Rocket_Project.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -76,14 +76,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-STM32_SPI_SD_Card.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "STM32_SPI_SD_Card.list"
+STM32_CubeIDE_Rocket_Project.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "STM32_CubeIDE_Rocket_Project.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) STM32_SPI_SD_Card.elf STM32_SPI_SD_Card.list STM32_SPI_SD_Card.map default.size.stdout
+	-$(RM) STM32_CubeIDE_Rocket_Project.elf STM32_CubeIDE_Rocket_Project.list STM32_CubeIDE_Rocket_Project.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)

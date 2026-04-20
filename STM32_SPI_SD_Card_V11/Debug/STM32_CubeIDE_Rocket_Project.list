@@ -1,5 +1,5 @@
 
-STM32_SPI_SD_Card.elf:     file format elf32-littlearm
+STM32_CubeIDE_Rocket_Project.elf:     file format elf32-littlearm
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
@@ -31,15 +31,15 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  13 .debug_rnglists 00001630  00000000  00000000  0003ce58  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_line   00018930  00000000  00000000  0003e488  2**0
+ 14 .debug_line   00018984  00000000  00000000  0003e488  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_str    0000c02b  00000000  00000000  00056db8  2**0
+ 15 .debug_str    0000bff9  00000000  00000000  00056e0c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .comment      00000043  00000000  00000000  00062de3  2**0
+ 16 .comment      00000043  00000000  00000000  00062e05  2**0
                   CONTENTS, READONLY
- 17 .debug_frame  00008678  00000000  00000000  00062e28  2**2
+ 17 .debug_frame  00008678  00000000  00000000  00062e48  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_line_str 00000076  00000000  00000000  0006b4a0  2**0
+ 18 .debug_line_str 0000009e  00000000  00000000  0006b4c0  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2940,49 +2940,109 @@ void SystemInit (void)
  80014d8:	58024800 	.word	0x58024800
 
 080014dc <Reset_Handler>:
+
+    .section  .text.Reset_Handler
+  .weak  Reset_Handler
+  .type  Reset_Handler, %function
+Reset_Handler:
+  ldr   sp, =_estack      /* set stack pointer */
  80014dc:	f8df d038 	ldr.w	sp, [pc, #56]	@ 8001518 <LoopForever+0x2>
+
+/* Call the ExitRun0Mode function to configure the power supply */
+  bl  ExitRun0Mode
  80014e0:	f7ff fff0 	bl	80014c4 <ExitRun0Mode>
+/* Call the clock system initialization function.*/
+  bl  SystemInit
  80014e4:	f7ff ff4e 	bl	8001384 <SystemInit>
+
+/* Copy the data segment initializers from flash to SRAM */
+  ldr r0, =_sdata
  80014e8:	480c      	ldr	r0, [pc, #48]	@ (800151c <LoopForever+0x6>)
+  ldr r1, =_edata
  80014ea:	490d      	ldr	r1, [pc, #52]	@ (8001520 <LoopForever+0xa>)
+  ldr r2, =_sidata
  80014ec:	4a0d      	ldr	r2, [pc, #52]	@ (8001524 <LoopForever+0xe>)
+  movs r3, #0
  80014ee:	2300      	movs	r3, #0
+  b LoopCopyDataInit
  80014f0:	e002      	b.n	80014f8 <LoopCopyDataInit>
 
 080014f2 <CopyDataInit>:
+
+CopyDataInit:
+  ldr r4, [r2, r3]
  80014f2:	58d4      	ldr	r4, [r2, r3]
+  str r4, [r0, r3]
  80014f4:	50c4      	str	r4, [r0, r3]
+  adds r3, r3, #4
  80014f6:	3304      	adds	r3, #4
 
 080014f8 <LoopCopyDataInit>:
+
+LoopCopyDataInit:
+  adds r4, r0, r3
  80014f8:	18c4      	adds	r4, r0, r3
+  cmp r4, r1
  80014fa:	428c      	cmp	r4, r1
+  bcc CopyDataInit
  80014fc:	d3f9      	bcc.n	80014f2 <CopyDataInit>
+/* Zero fill the bss segment. */
+  ldr r2, =_sbss
  80014fe:	4a0a      	ldr	r2, [pc, #40]	@ (8001528 <LoopForever+0x12>)
+  ldr r4, =_ebss
  8001500:	4c0a      	ldr	r4, [pc, #40]	@ (800152c <LoopForever+0x16>)
+  movs r3, #0
  8001502:	2300      	movs	r3, #0
+  b LoopFillZerobss
  8001504:	e001      	b.n	800150a <LoopFillZerobss>
 
 08001506 <FillZerobss>:
+
+FillZerobss:
+  str  r3, [r2]
  8001506:	6013      	str	r3, [r2, #0]
+  adds r2, r2, #4
  8001508:	3204      	adds	r2, #4
 
 0800150a <LoopFillZerobss>:
+
+LoopFillZerobss:
+  cmp r2, r4
  800150a:	42a2      	cmp	r2, r4
+  bcc FillZerobss
  800150c:	d3fb      	bcc.n	8001506 <FillZerobss>
+
+/* Call static constructors */
+    bl __libc_init_array
  800150e:	f00a faab 	bl	800ba68 <__libc_init_array>
+/* Call the application's entry point.*/
+    bl  main
  8001512:	f7ff f8f9 	bl	8000708 <main>
 
 08001516 <LoopForever>:
+LoopForever:
+    b LoopForever
  8001516:	e7fe      	b.n	8001516 <LoopForever>
+  ldr   sp, =_estack      /* set stack pointer */
  8001518:	24080000 	.word	0x24080000
+  ldr r0, =_sdata
  800151c:	24000000 	.word	0x24000000
+  ldr r1, =_edata
  8001520:	240001f0 	.word	0x240001f0
+  ldr r2, =_sidata
  8001524:	0800e14c 	.word	0x0800e14c
+  ldr r2, =_sbss
  8001528:	240001f0 	.word	0x240001f0
+  ldr r4, =_ebss
  800152c:	24000fbc 	.word	0x24000fbc
 
 08001530 <ADC3_IRQHandler>:
+ * @retval None
+*/
+    .section  .text.Default_Handler,"ax",%progbits
+Default_Handler:
+Infinite_Loop:
+  b  Infinite_Loop
  8001530:	e7fe      	b.n	8001530 <ADC3_IRQHandler>
 	...
 
