@@ -66,8 +66,8 @@ all: main-build
 main-build: STM32_CubeIDE_Rocket_Project.elf secondary-outputs
 
 # Tool invocations
-STM32_CubeIDE_Rocket_Project.elf STM32_CubeIDE_Rocket_Project.map: $(OBJS) $(USER_OBJS) /home/caleb/Documents/Work/Wyzant\ Tutoring/Nicholas\ Chang\ PCB/Rocket-Flight-Data-Computer/STM32_SPI_SD_Card_V11/STM32H743VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "STM32_CubeIDE_Rocket_Project.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"/home/caleb/Documents/Work/Wyzant Tutoring/Nicholas Chang PCB/Rocket-Flight-Data-Computer/STM32_SPI_SD_Card_V11/STM32H743VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32_CubeIDE_Rocket_Project.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+STM32_CubeIDE_Rocket_Project.elf STM32_CubeIDE_Rocket_Project.map: $(OBJS) $(USER_OBJS) /home/caleb/Documents/Work/Wyzant\ Tutoring/Nicholas\ Chang\ PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/STM32H743VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "STM32_CubeIDE_Rocket_Project.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"/home/caleb/Documents/Work/Wyzant Tutoring/Nicholas Chang PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/STM32H743VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="STM32_CubeIDE_Rocket_Project.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
