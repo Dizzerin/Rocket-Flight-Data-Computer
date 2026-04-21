@@ -27,6 +27,7 @@
 #include <stdarg.h> //for va_list var arg functions
 #include "lsm6dso32_device.h"
 #include "SD_Card.h"
+#include "bme680_example.h"
 
 /* USER CODE END Includes */
 
@@ -144,6 +145,9 @@ int main(void)
   // Initialize LSM6DSO32 IMU device
   HAL_Delay(1000);
   lsm6_init();
+
+  // Initialize BME680 barometer
+  bme680_exampleInit();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -180,6 +184,9 @@ int main(void)
 
 	// Test LSM6DSO32 IMU Device
 	lsm6_getAndPrintData();
+
+	// Update BME680 barometer state machine
+	bme680_exampleUpdate();
   }
   /* USER CODE END 3 */
 }
