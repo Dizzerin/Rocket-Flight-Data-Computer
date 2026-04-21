@@ -35,7 +35,7 @@ Middlewares/ST/lsm6dso/lsm6dso32_device.o: \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart_ex.h \
  ../Middlewares/ST/lsm6dso/lsm6dso32_device.h \
- /home/caleb/Documents/Work/Wyzant\ Tutoring/Nicholas\ Chang\ PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/SD_Card.h \
+ /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/SD_Card.h \
  ../Middlewares/Third_Party/FatFs/src/ff.h \
  ../Middlewares/Third_Party/FatFs/src/integer.h ../FATFS/Target/ffconf.h
 ../Middlewares/ST/lsm6dso/lsm6dso32_reg.h:
@@ -74,7 +74,7 @@ Middlewares/ST/lsm6dso/lsm6dso32_device.o: \
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h:
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart_ex.h:
 ../Middlewares/ST/lsm6dso/lsm6dso32_device.h:
-/home/caleb/Documents/Work/Wyzant\ Tutoring/Nicholas\ Chang\ PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/SD_Card.h:
+/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/SD_Card.h:
 ../Middlewares/Third_Party/FatFs/src/ff.h:
 ../Middlewares/Third_Party/FatFs/src/integer.h:
 ../FATFS/Target/ffconf.h:
