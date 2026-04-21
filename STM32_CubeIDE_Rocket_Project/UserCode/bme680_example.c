@@ -49,7 +49,7 @@ void bme680_exampleUpdate(void)
         /* Gas status string: valid + heater stable is the ideal case */
         const char *gas_status;
         if (!data.gas_valid) {
-            gas_status = "invalid";
+            gas_status = "invalid/disabled";
         } else if (!data.heat_stab) {
             gas_status = "valid (heater unstable)";
         } else {

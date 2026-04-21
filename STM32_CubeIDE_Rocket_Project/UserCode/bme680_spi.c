@@ -125,6 +125,7 @@ static BME680_State_t    state        = BME680_STATE_IDLE;
 static BME680_CalibData_t calib;
 static BME680_Data_t     latestData;
 static uint8_t           isInitialized = 0;
+static uint8_t           gasEnabled    = 0;   /* 0 = gas sensor off (default), 1 = on */
 static uint8_t           currentPage   = 0;   /* Tracks active SPI page */
 static uint32_t          measStartTick = 0;
 static float             lastTempC     = 25.0f; /* Ambient temp estimate for heater calc */
@@ -403,6 +404,15 @@ uint8_t bme680_init(void)
     return BME680_OK;
 }
 
+/* Enable or disable the gas sensor. Takes effect on the next triggered measurement.
+ * Disabling saves ~100 ms per measurement and ~12 mA heater current.
+ * When disabled, gas_resistance_ohms, gas_valid, and heat_stab in BME680_Data_t
+ * will be 0 / invalid. */
+void bme680_setGasEnabled(uint8_t enabled)
+{
+    gasEnabled = enabled ? 1 : 0;
+}
+
 /* Request a new measurement. Safe to call from idle or after data is ready.
  * Ignored if a measurement is already in progress. */
 void bme680_triggerMeasurement(void)
@@ -434,17 +444,17 @@ uint8_t bme680_update(void)
             /* Humidity oversampling must be written before ctrl_meas */
             spi_write(REG_CTRL_HUM, OSRS_H & 0x07);
 
-            /* Ensure gas heater is not forced off */
-            spi_write(REG_CTRL_GAS0, 0x00);
-
-            /* Enable gas conversion, select heater profile 0 */
-            spi_write(REG_CTRL_GAS1, (1U << 4) | 0x00);
-
-            /* Heater wait time for profile 0: 100 ms */
-            spi_write(REG_GAS_WAIT0, GAS_WAIT_VAL);
-
-            /* Heater resistance for profile 0 */
-            spi_write(REG_RES_HEAT0, calc_res_heat(HEATER_TARGET_DEGC));
+            if (gasEnabled) {
+                /* Heater on, gas conversion enabled, heater profile 0 */
+                spi_write(REG_CTRL_GAS0, 0x00);
+                spi_write(REG_CTRL_GAS1, (1U << 4) | 0x00);
+                spi_write(REG_GAS_WAIT0, GAS_WAIT_VAL);
+                spi_write(REG_RES_HEAT0, calc_res_heat(HEATER_TARGET_DEGC));
+            } else {
+                /* Heater forced off, gas conversion disabled */
+                spi_write(REG_CTRL_GAS0, (1U << 3));   /* heat_off = 1 */
+                spi_write(REG_CTRL_GAS1, 0x00);        /* run_gas = 0 */
+            }
 
             /* Temperature/pressure oversampling + forced mode trigger (single write) */
             uint8_t ctrl_meas = (uint8_t)(((OSRS_T & 0x07U) << 5)
@@ -496,12 +506,16 @@ uint8_t bme680_update(void)
             uint8_t  heat_stab = (raw[14] >> 4) & 0x01;
 
             /* Compensate - temperature first (populates calib.t_fine for others) */
-            latestData.temperature_degC    = compensate_temperature(adc_temp);
-            latestData.pressure_hPa        = compensate_pressure(adc_pres);
-            latestData.humidity_pctRH      = compensate_humidity(adc_hum);
-            latestData.gas_resistance_ohms = compensate_gas_resistance(adc_gas, gas_range);
-            latestData.gas_valid           = gas_valid;
-            latestData.heat_stab           = heat_stab;
+            latestData.temperature_degC = compensate_temperature(adc_temp);
+            latestData.pressure_hPa     = compensate_pressure(adc_pres);
+            latestData.humidity_pctRH   = compensate_humidity(adc_hum);
+            latestData.gas_valid        = gas_valid;
+            latestData.heat_stab        = heat_stab;
+            /* Only compute gas resistance when the hardware confirms a valid reading.
+             * When gas is disabled, gas_valid=0 and the ADC registers hold garbage. */
+            latestData.gas_resistance_ohms = gas_valid
+                                             ? compensate_gas_resistance(adc_gas, gas_range)
+                                             : 0.0f;
 
             lastTempC = latestData.temperature_degC;    /* Update ambient estimate */
 

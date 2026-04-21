@@ -158,35 +158,35 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	switch (count++)
-	{
-		case 0:
-		case 1:
-			// This code will run twice as often as the other code
-			//myprintf("Runs 2x as often\r\n");
-			break;
+    switch (count++)
+    {
+      case 0:
+      case 1:
+        // This code will run twice as often as the other code
+        //myprintf("Runs 2x as often\r\n");
+        break;
 
-		case 2:
-			// This will run half as often
-			//myprintf("Runs 1/2 as often\r\n");
-			break;
+      case 2:
+        // This will run half as often
+        //myprintf("Runs 1/2 as often\r\n");
+        break;
 
-		default:
-			break;
-	}
-	// wrap count around
-	if (count >= 3)
-		count = 0;
+      default:
+        break;
+    }
+    // wrap count around
+    if (count >= 3)
+      count = 0;
 
-	// Blink LED
-	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);	// Toggle an LED
-	HAL_Delay(1000);	// TODO don't delay like this in the main loop - this is called blocking code as it blocks everything, we want non-blocking code
+    // Blink LED
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);	// Toggle an LED
+    HAL_Delay(1000);	// TODO don't delay like this in the main loop - this is called blocking code as it blocks everything, we want non-blocking code
 
-	// Test LSM6DSO32 IMU Device
-	lsm6_getAndPrintData();
+    // Test LSM6DSO32 IMU Device
+    lsm6_getAndPrintData();
 
-	// Update BME680 barometer state machine
-	bme680_exampleUpdate();
+    // Update BME680 barometer state machine
+    bme680_exampleUpdate();
   }
   /* USER CODE END 3 */
 }

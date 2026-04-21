@@ -43,6 +43,7 @@ typedef struct {
 
 /* Public API */
 uint8_t       bme680_init(void);
+void          bme680_setGasEnabled(uint8_t enabled); /* 1=on, 0=off (default) */
 void          bme680_triggerMeasurement(void);
 uint8_t       bme680_update(void);
 uint8_t       bme680_isDataReady(void);
