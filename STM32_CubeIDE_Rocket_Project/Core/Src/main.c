@@ -558,7 +558,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : SD_CARD_DETECT_Pin */
   GPIO_InitStruct.Pin = SD_CARD_DETECT_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(SD_CARD_DETECT_GPIO_Port, &GPIO_InitStruct);
 
@@ -568,6 +568,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(CAM_CS_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(SD_CARD_DETECT_EXTI_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(SD_CARD_DETECT_EXTI_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

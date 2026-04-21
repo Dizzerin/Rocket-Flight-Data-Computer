@@ -66,6 +66,7 @@ void myprintf(const char *fmt, ...);
 #define BARO2_CS_GPIO_Port GPIOC
 #define SD_CARD_DETECT_Pin GPIO_PIN_8
 #define SD_CARD_DETECT_GPIO_Port GPIOA
+#define SD_CARD_DETECT_EXTI_IRQn EXTI9_5_IRQn
 #define BUZZER_PIN_Pin GPIO_PIN_10
 #define BUZZER_PIN_GPIO_Port GPIOA
 #define CAM_CS_Pin GPIO_PIN_0
