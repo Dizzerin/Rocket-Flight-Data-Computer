@@ -1,0 +1,17 @@
+../UserCode/bme680_spi.c:137:20:cs_low	1
+../UserCode/bme680_spi.c:142:20:cs_high	1
+../UserCode/bme680_spi.c:148:13:spi_read	1
+../UserCode/bme680_spi.c:158:13:spi_write	1
+../UserCode/bme680_spi.c:170:13:set_page	3
+../UserCode/bme680_spi.c:189:14:compensate_temperature	1
+../UserCode/bme680_spi.c:200:14:compensate_pressure	1
+../UserCode/bme680_spi.c:220:14:compensate_humidity	3
+../UserCode/bme680_spi.c:238:14:compensate_gas_resistance	1
+../UserCode/bme680_spi.c:258:16:calc_res_heat	1
+../UserCode/bme680_spi.c:277:13:read_calibration	1
+../UserCode/bme680_spi.c:371:9:bme680_init	2
+../UserCode/bme680_spi.c:411:6:bme680_setGasEnabled	1
+../UserCode/bme680_spi.c:418:6:bme680_triggerMeasurement	4
+../UserCode/bme680_spi.c:430:9:bme680_update	10
+../UserCode/bme680_spi.c:535:9:bme680_isDataReady	1
+../UserCode/bme680_spi.c:541:15:bme680_getData	1

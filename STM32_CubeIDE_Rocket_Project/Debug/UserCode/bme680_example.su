@@ -1,0 +1,2 @@
+../UserCode/bme680_example.c:27:6:bme680_exampleInit	8	static
+../UserCode/bme680_example.c:40:6:bme680_exampleUpdate	72	static

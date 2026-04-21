@@ -5,13 +5,19 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../UserCode/SD_Card.c 
+../UserCode/SD_Card.c \
+../UserCode/bme680_example.c \
+../UserCode/bme680_spi.c 
 
 OBJS += \
-./UserCode/SD_Card.o 
+./UserCode/SD_Card.o \
+./UserCode/bme680_example.o \
+./UserCode/bme680_spi.o 
 
 C_DEPS += \
-./UserCode/SD_Card.d 
+./UserCode/SD_Card.d \
+./UserCode/bme680_example.d \
+./UserCode/bme680_spi.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
@@ -21,7 +27,7 @@ UserCode/%.o UserCode/%.su UserCode/%.cyclo: ../UserCode/%.c UserCode/subdir.mk
 clean: clean-UserCode
 
 clean-UserCode:
-	-$(RM) ./UserCode/SD_Card.cyclo ./UserCode/SD_Card.d ./UserCode/SD_Card.o ./UserCode/SD_Card.su
+	-$(RM) ./UserCode/SD_Card.cyclo ./UserCode/SD_Card.d ./UserCode/SD_Card.o ./UserCode/SD_Card.su ./UserCode/bme680_example.cyclo ./UserCode/bme680_example.d ./UserCode/bme680_example.o ./UserCode/bme680_example.su ./UserCode/bme680_spi.cyclo ./UserCode/bme680_spi.d ./UserCode/bme680_spi.o ./UserCode/bme680_spi.su
 
 .PHONY: clean-UserCode
 
