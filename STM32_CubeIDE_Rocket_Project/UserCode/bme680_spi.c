@@ -423,10 +423,11 @@ void bme680_triggerMeasurement(void)
     state = BME680_STATE_TRIGGER_PENDING;
 }
 
-/* Advance the state machine. Call repeatedly from the main loop.
+/* BME680 state machine. Call repeatedly.
  * Returns: BME680_OK    - idle or data ready
  *          BME680_BUSY  - measurement in progress
  *          BME680_ERROR - hardware or timeout fault */
+// TODO rename this to something that include SM or StateMachine to make it clear what it is, maybe bme680_StateMachine()
 uint8_t bme680_update(void)
 {
     if (!isInitialized) return BME680_ERROR;
@@ -444,6 +445,7 @@ uint8_t bme680_update(void)
             /* Humidity oversampling must be written before ctrl_meas */
             spi_write(REG_CTRL_HUM, OSRS_H & 0x07);
 
+            // TODO could optimize this better to only write the heater/gas bits if gasEnabled changes
             if (gasEnabled) {
                 /* Heater on, gas conversion enabled, heater profile 0 */
                 spi_write(REG_CTRL_GAS0, 0x00);

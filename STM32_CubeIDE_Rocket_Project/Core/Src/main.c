@@ -141,8 +141,7 @@ int main(void)
 
   Scheduler_Init();
   Scheduler_RegisterTask(SD_Update,              100);
-  Scheduler_RegisterTask(DataLogger_UpdateBME,     5);
-  Scheduler_RegisterTask(DataLogger_UpdateIMU,    10);
+  Scheduler_RegisterTask(DataLogger_Update,        5);
   Scheduler_RegisterTask(LED_Toggle,             500);
   /* USER CODE END 2 */
 

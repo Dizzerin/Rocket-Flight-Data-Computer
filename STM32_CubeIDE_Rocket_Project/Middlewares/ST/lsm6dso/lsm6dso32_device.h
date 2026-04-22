@@ -19,7 +19,7 @@ typedef struct {
     uint8_t data_valid;        /* 1 = at least accel data was fresh this call */
 } LSM6DSO_Data_t;
 
-uint8_t lsm6_init(void);
+uint8_t lsm6_init(void);                     /* Initializes the sensor and starts continuous measurement mode. Returns 0 on success. */
 uint8_t lsm6_readData(LSM6DSO_Data_t *out);  /* 0 = success, does not print */
 uint8_t lsm6_getAndPrintData(void);          /* reads + prints via myprintf */
 

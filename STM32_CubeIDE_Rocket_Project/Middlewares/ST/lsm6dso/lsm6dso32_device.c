@@ -92,8 +92,15 @@ uint8_t lsm6_init(void)
   /* Restore default configuration */
   lsm6dso32_reset_set(&dev_ctx, PROPERTY_ENABLE);
 
+  uint32_t timeout = HAL_GetTick() + 1000; // 1 second timeout
   do {
     lsm6dso32_reset_get(&dev_ctx, &rst);
+    
+    // Break out of loop if timeout exceeded
+    if (HAL_GetTick() >= timeout) {
+        myprintf("LSM6DSO32 Reset Timeout!\r\n");
+        return 1;
+    }
   } while (rst);
 
   /* Disable I3C interface */
@@ -116,6 +123,7 @@ uint8_t lsm6_init(void)
  * Checks the status register; only reads axes that have new data available.
  * Stale axes return the last successfully read value.
  * Returns 0 on success, 1 if not initialized or out param is NULL.
+ * out.data_valid is set to 1 if at least accel data was fresh, otherwise 0.  // TODO lets create an isAccelDataNew and isGyroDataNew and then log those to the log file as well
  */
 uint8_t lsm6_readData(LSM6DSO_Data_t *out)
 {
