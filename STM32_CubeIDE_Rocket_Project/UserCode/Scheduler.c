@@ -34,12 +34,12 @@
  *   "Is A earlier than B?"  →  (B - A) mod 16 < 8
  *
  *   No wraparound involved:
- *     A=3,  B=7  (A truly IS  earlier): B-A = 7-3   = 4    = 0100b  < 8  → YES ✓
+ *     A=3,  B=7  (A truly IS  earlier): B-A = 7-3   = 4       = 0100b  < 8  → YES ✓
  *     A=7,  B=3  (A truly NOT earlier): B-A = 3-7   = -4 → 12 = 1100b  ≥ 8  → NO  ✓
  *
  *   Wraparound involved (counter rolled past 15 back to 0):
  *     A=14, B=2  (A truly IS  earlier): B-A = 2-14  = -12 → 4  = 0100b  < 8  → YES ✓
- *     A=2,  B=14 (A truly NOT earlier): B-A = 14-2  = 12    = 1100b  ≥ 8  → NO  ✓
+ *     A=2,  B=14 (A truly NOT earlier): B-A = 14-2  = 12       = 1100b  ≥ 8  → NO  ✓
  *
  * The key insight: when A truly came first (even across a wraparound), the
  * forward distance from A to B is small — the result of (B - A) stays well
