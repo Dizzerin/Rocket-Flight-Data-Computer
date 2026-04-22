@@ -41,12 +41,11 @@
  * CSV header — written once at the top of each new log file
  * ========================================================================= */
 
-// TODO put the data new flags before the values they refer to, and include the temp_new flag as well.
 static const char CSV_HEADER[] =
     "WriteTime_ms,"
-    "IMU_Timestamp_ms,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,"
-    "Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,"
-    "Accel_New,Gyro_New,IMU_Temp_C,"
+    "IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,"
+    "Gyro_New,Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,"
+    "Temp_New,IMU_Temp_C,"
     "BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH\r\n";
 
 /* =========================================================================
@@ -155,18 +154,58 @@ static void writeCSVRow(uint32_t writeTimestamp)
         myprintf("DL: failed to read IMU data. Is it initialized?\r\n");
     }
 
-    char line[224];
+/*    Here's the field-by-field breakdown:                                                                                   
+ *                                                              
+ *    ┌───────────────────────┬─────────┬───────────────────────────────────────┬──────────────┐                             
+ *    │         Field         │ Format  │               Max value               │  Max chars   │                           
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ writeTimestamp        │ %lu     │ 4294967295                            │ 10           │                             
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ imu.timestamp_ms      │ %lu     │ 4294967295                            │ 10           │                             
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                           
+ *    │ isAccelDataNew        │ %u      │ 1                                     │ 1            │                             
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
+ *    │ accel_mg[0..2] ×3     │ %.2f    │ ±16000 mg (FS16g)                     │ 9 each = 27  │                             
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ isGyroDataNew         │ %u      │ 1                                     │ 1            │                           
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ gyro_mdps[0..2] ×3    │ %.2f    │ ±2,293,690 mdps (32767 × 70 mdps/LSB) │ 11 each = 33 │
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ isTempDataNew         │ %u      │ 1                                     │ 1            │                           
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ temperature_degC      │ %.2f    │ −40 to +85°C                          │ 6            │
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ bmeCache.timestamp_ms │ %lu     │ 4294967295                            │ 10           │
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
+ *    │ pressure_hPa          │ %.2f    │ 300–1100 hPa                          │ 7            │                           
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ BME temperature_degC  │ %.2f    │ −40 to +85°C                          │ 6            │
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ humidity_pctRH        │ %.2f    │ 0–100%                                │ 6            │                           
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ 15 commas + \r\n      │ literal │ —                                     │ 17           │
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ null terminator       │ —       │ —                                     │ 1            │                           
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤                             
+ *    │ Total                 │         │                                       │ 136          │
+ *    └───────────────────────┴─────────┴───────────────────────────────────────┴──────────────┘      
+ */
+    char line[160];  /* Max row = 136 bytes (calculated); 160 gives 24-byte margin */
 
     if (bmeHasReturnedFirstReading) {
         snprintf(line, sizeof(line),
                  "%lu,"
-                 "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%u,%.2f,"
+                 "%lu,%u,%.2f,%.2f,%.2f,"
+                 "%u,%.2f,%.2f,%.2f,"
+                 "%u,%.2f,"
                  "%lu,%.2f,%.2f,%.2f\r\n",
                  (unsigned long)writeTimestamp,
                  (unsigned long)imu.timestamp_ms,
+                 imu.isAccelDataNew,
                  imu.accel_mg[0], imu.accel_mg[1], imu.accel_mg[2],
+                 imu.isGyroDataNew,
                  imu.gyro_mdps[0], imu.gyro_mdps[1], imu.gyro_mdps[2],
-                 imu.isAccelDataNew, imu.isGyroDataNew,
+                 imu.isTempDataNew,
                  imu.temperature_degC,
                  (unsigned long)bmeCache.timestamp_ms,
                  bmeCache.pressure_hPa,
@@ -176,13 +215,17 @@ static void writeCSVRow(uint32_t writeTimestamp)
         /* BME680 hasn't returned its first reading yet — leave BME columns empty */
         snprintf(line, sizeof(line),
                  "%lu,"
-                 "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%u,%.2f,"
-                 ",,, \r\n",
+                 "%lu,%u,%.2f,%.2f,%.2f,"
+                 "%u,%.2f,%.2f,%.2f,"
+                 "%u,%.2f,"
+                 ",,,\r\n",
                  (unsigned long)writeTimestamp,
                  (unsigned long)imu.timestamp_ms,
+                 imu.isAccelDataNew,
                  imu.accel_mg[0], imu.accel_mg[1], imu.accel_mg[2],
+                 imu.isGyroDataNew,
                  imu.gyro_mdps[0], imu.gyro_mdps[1], imu.gyro_mdps[2],
-                 imu.isAccelDataNew, imu.isGyroDataNew,
+                 imu.isTempDataNew,
                  imu.temperature_degC);
     }
 
@@ -271,6 +314,7 @@ void DataLogger_StateMachine_Task(void)
             break;
 
         case DL_LOGGING:
+            // Note with this kind of subtraction the wrap around case is handled correctly as long as the write interval is less than 24.8 days (which it always is in practice)
             if ((now - lastCsvWriteTick) >= DATALOGGER_CSV_WRITE_MS) {
                 lastCsvWriteTick = now;
                 writeCSVRow(now);

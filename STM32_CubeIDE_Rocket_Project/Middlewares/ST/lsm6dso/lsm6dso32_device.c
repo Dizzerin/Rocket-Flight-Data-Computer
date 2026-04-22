@@ -107,7 +107,8 @@ uint8_t lsm6_init(void)
   /* Set ODR (Output Data Rate) and power mode*/
   lsm6dso32_xl_data_rate_set(&dev_ctx, LSM6DSO32_XL_ODR_104Hz_HIGH_PERF);
   lsm6dso32_gy_data_rate_set(&dev_ctx, LSM6DSO32_GY_ODR_104Hz_HIGH_PERF);
-  // TODO Do we need to init temp data as well?
+  /* Temperature sensor requires no separate init — it runs automatically
+     whenever the accelerometer or gyroscope is active. */
 
   isInitialized = 1;
   return 0; // To indicate success
@@ -168,7 +169,7 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
       memset(&data_raw_temperature, 0x00, sizeof(int16_t));
       lsm6dso32_temperature_raw_get(&dev_ctx, &data_raw_temperature);
       temperature_degC = lsm6dso32_from_lsb_to_celsius(data_raw_temperature);
-      out->isTempDataNew  = 1;  // TODO use this
+      out->isTempDataNew  = 1;
   }
   out->temperature_degC = temperature_degC;
 
