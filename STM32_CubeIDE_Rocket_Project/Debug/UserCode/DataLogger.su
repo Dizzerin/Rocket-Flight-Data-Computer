@@ -1,5 +1,5 @@
-../UserCode/DataLogger.c:82:17:findHighestLogNumber	88	static
-../UserCode/DataLogger.c:104:16:createLogFile	32	static
-../UserCode/DataLogger.c:151:13:writeCSVRow	416	static
-../UserCode/DataLogger.c:203:6:DataLogger_Init	8	static
-../UserCode/DataLogger.c:221:6:DataLogger_StateMachine_Task	48	static
+../UserCode/DataLogger.c:81:17:findHighestLogNumber	88	static
+../UserCode/DataLogger.c:103:16:createLogFile	32	static
+../UserCode/DataLogger.c:150:13:writeCSVRow	368	static
+../UserCode/DataLogger.c:246:6:DataLogger_Init	8	static
+../UserCode/DataLogger.c:264:6:DataLogger_StateMachine_Task	48	static
