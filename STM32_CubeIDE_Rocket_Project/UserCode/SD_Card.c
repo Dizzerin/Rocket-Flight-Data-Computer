@@ -174,12 +174,24 @@ FRESULT SD_FileClose(FIL *fp)
 FRESULT SD_FileWrite(FIL *fp, const void *buff, UINT btw, UINT *bw)
 {
     if (state != SD_MOUNTED) return FR_NOT_READY;
+    return f_write(fp, buff, btw, bw);
+}
 
-    // Write
-    FRESULT res = f_write(fp, buff, btw, bw);
-    if (res != FR_OK) return res;
-
-    // Sync (flush) after every write to minimize data loss on unexpected power-off.
+/*
+ * Flush all dirty file data and metadata (FAT, directory entry) to the SD card.
+ *
+ * This is intentionally separate from SD_FileWrite. Calling f_sync after every
+ * write forces 2–3 sector writes per row (data sector + directory entry sector +
+ * occasionally a FAT sector). Each sector write takes several milliseconds of SPI
+ * time plus SD card internal write latency. At 100 Hz logging that would consume
+ * far more than the available 10 ms budget per write.
+ *
+ * Call this periodically (e.g. once per second) rather than after every row.
+ * On unexpected power-off you lose at most one sync interval worth of data.
+ */
+FRESULT SD_FileSync(FIL *fp)
+{
+    if (state != SD_MOUNTED) return FR_NOT_READY;
     return f_sync(fp);
 }
 

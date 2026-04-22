@@ -32,6 +32,13 @@
 /* Milliseconds between CSV row writes (100 Hz = 10 ms) */
 #define DATALOGGER_CSV_WRITE_MS     10U
 
+/* Milliseconds between SD card syncs (1 Hz = 1000 ms).
+ * f_sync forces the data sector, FAT, and directory entry to physical media —
+ * 2–3 sector writes costing several milliseconds each. Syncing every 1 second
+ * instead of every row keeps SD overhead under 1% of CPU time. In the worst
+ * case of unexpected power-off, at most 1 second of log data is lost. */
+#define DATALOGGER_SYNC_MS          1000U
+
 void DataLogger_Init(void);
 void DataLogger_StateMachine_Task(void);   /* Single update task — register at 5 ms */
 

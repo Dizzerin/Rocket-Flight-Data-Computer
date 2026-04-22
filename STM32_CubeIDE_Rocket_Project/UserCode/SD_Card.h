@@ -37,6 +37,7 @@ uint8_t    SD_IsMounted(void);             /* 1 if state == SD_MOUNTED          
 FRESULT    SD_FileOpen(FIL *fp, const char *path, BYTE mode);
 FRESULT    SD_FileClose(FIL *fp);
 FRESULT    SD_FileWrite(FIL *fp, const void *buff, UINT btw, UINT *bw);
+FRESULT    SD_FileSync(FIL *fp);   /* Flush dirty data and metadata to the SD card */
 
 /* Directory operations */
 FRESULT    SD_DirOpen(DIR *dp, const char *path);

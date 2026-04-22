@@ -69,6 +69,7 @@ static BME680_Data_t bmeCache;
 static uint8_t       bmeHasReturnedFirstReading = 0;
 static uint32_t      bmeLastTrigger     = 0;
 static uint32_t      lastCsvWriteTick   = 0;
+static uint32_t      lastSyncTick       = 0;
 
 /* =========================================================================
  * Internal helpers
@@ -307,6 +308,7 @@ void DataLogger_StateMachine_Task(void)
         case DL_OPENING:
             if (createLogFile() == FR_OK) {
                 lastCsvWriteTick = now;
+                lastSyncTick     = now;
                 dlState          = DL_LOGGING;
             } else {
                 dlState = DL_ERROR;
@@ -318,6 +320,22 @@ void DataLogger_StateMachine_Task(void)
             if ((now - lastCsvWriteTick) >= DATALOGGER_CSV_WRITE_MS) {
                 lastCsvWriteTick = now;
                 writeCSVRow(now);
+            }
+
+            /* Sync to SD card once per DATALOGGER_SYNC_MS (1 second).
+             * Flushing on every write could require 2–3 sector writes per row —
+             * several ms each — far exceeding the 10 ms logging period budget.
+             * By syncing once per second like this instead, at worst, 1 second 
+             * of data is lost on unexpected power-off.
+             */
+            if ((now - lastSyncTick) >= DATALOGGER_SYNC_MS) {
+                lastSyncTick = now;
+                FRESULT syncResult = SD_FileSync(&logFile);
+                if (syncResult != FR_OK) {
+                    myprintf("DL: sync failed (%d) — entering error state\r\n", syncResult);
+                    isFileOpen = 0;
+                    dlState    = DL_ERROR;
+                }
             }
             break;
 
