@@ -140,8 +140,8 @@ int main(void)
   DataLogger_Init();
 
   Scheduler_Init();
-  Scheduler_RegisterTask(SD_Update,              100);
-  Scheduler_RegisterTask(DataLogger_Update,        5);
+  Scheduler_RegisterTask(SD_StateMachine,              100);
+  Scheduler_RegisterTask(DataLogger_StateMachine_Task,   5);
   Scheduler_RegisterTask(LED_Toggle,             500);
   /* USER CODE END 2 */
 

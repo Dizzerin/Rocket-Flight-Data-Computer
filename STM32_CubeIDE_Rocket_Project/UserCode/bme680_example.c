@@ -6,7 +6,7 @@
  * Triggers a forced-mode TPHG measurement every BME680_SAMPLE_INTERVAL_MS ms.
  * When data becomes ready, all four compensated values are printed via myprintf().
  *
- * The state machine in bme680_spi.c is non-blocking: bme680_update() returns
+ * The state machine in bme680_spi.c is non-blocking: bme680_stateMachine() returns
  * immediately on every call and only reads the sensor when it signals completion.
  * No busy-waiting occurs between trigger and data-ready.
  *
@@ -40,7 +40,7 @@ void bme680_exampleInit(void)
 void bme680_exampleUpdate(void)
 {
     /* Advance the non-blocking state machine */
-    uint8_t result = bme680_update();
+    uint8_t result = bme680_stateMachine();
 
     /* Print data once when it becomes available */
     if (result == BME680_OK && bme680_isDataReady() && !dataPrinted) {

@@ -9,7 +9,7 @@
  *
  * Usage:
  *   1. Call SD_Init() once after MX_GPIO_Init() and MX_FATFS_Init().
- *   2. Register SD_Update() with the task scheduler to run at ~100 ms.
+ *   2. Register SD_StateMachine() with the task scheduler to run at ~100 ms.
  *   3. Use SD_FileOpen/Write/Sync/Close for file I/O once SD_IsMounted().
  *   4. Poll SD_GetState() to detect mount/unmount transitions.
  */
@@ -29,7 +29,7 @@ typedef enum {
 } SD_State_t;
 
 void       SD_Init(void);
-void       SD_Update(void);                /* Run state machine — call every 100 ms */  // TODO rename it to something that include the words StateMachine
+void       SD_StateMachine(void);          /* Run state machine — call every 100 ms */
 SD_State_t SD_GetState(void);
 uint8_t    SD_IsMounted(void);             /* 1 if state == SD_MOUNTED              */
 

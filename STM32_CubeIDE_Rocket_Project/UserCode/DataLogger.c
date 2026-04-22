@@ -5,10 +5,12 @@
  *
  * Responsibilities:
  *   - Poll the BME680 non-blocking state machine every 5 ms.
- *   - Trigger new BME680 measurements every DATALOGGER_BME_TRIGGER_MS (50 ms).
- *   - Read the LSM6DSO32 IMU every DATALOGGER_IMU_POLL_MS (10 ms).
+ *   - Trigger new BME680 measurements every DATALOGGER_BME_TRIGGER_MS (50 ms = 20Hz).
+ *   - Note the LMS6DSO32 uses automatic/continuous measurement mode, so this module doesn't have to trigger it, it just reads it
+ *   - Read the LSM6DSO32 IMU and write a CSV row every DATALOGGER_CSV_WRITE_MS (10 ms = 100Hz).
  *   - Detect when the SD card is mounted and create the next LOG_XXXX.CSV file.
- *   - Write CSV rows at the IMU rate; BME680 columns repeat the last valid reading.
+ *   - Write CSV rows at the data logger rate; BME680 columns repeat the last valid reading
+ *     along with the timestamp of when that BME680 reading was actually captured.
  *   - Detect SD card removal and cleanly abandon the open file handle.
  *
  * Internal state machine (DL_State_t):
@@ -39,10 +41,13 @@
  * CSV header — written once at the top of each new log file
  * ========================================================================= */
 
+// TODO put the data new flags before the values they refer to, and include the temp_new flag as well.
 static const char CSV_HEADER[] =
-    "Timestamp_ms,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,"
+    "WriteTime_ms,"
+    "IMU_Timestamp_ms,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,"
     "Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,"
-    "IMU_Temp_C,Pressure_hPa,BME_Temp_C,Humidity_pctRH\r\n";
+    "Accel_New,Gyro_New,IMU_Temp_C,"
+    "BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH\r\n";
 
 /* =========================================================================
  * Module state
@@ -55,16 +60,16 @@ typedef enum {
     DL_ERROR
 } DL_State_t;
 
-static DL_State_t  dlState       = DL_IDLE;
-static SD_State_t  prevSdState   = SD_NOT_PRESENT;  /* for edge detection */
+static DL_State_t  dlState              = DL_IDLE;
+static SD_State_t  prevSdState          = SD_NOT_PRESENT;  /* for edge detection */
 
 static FIL         logFile;
-static uint8_t     fileOpen      = 0;
+static uint8_t     isFileOpen           = 0;
 
 static BME680_Data_t bmeCache;
-static uint8_t       bmeValid        = 0;
-static uint32_t      bmeLastTrigger  = 0;
-static uint32_t      imuLastTick     = 0;
+static uint8_t       bmeHasReturnedFirstReading = 0;
+static uint32_t      bmeLastTrigger     = 0;
+static uint32_t      lastCsvWriteTick   = 0;
 
 /* =========================================================================
  * Internal helpers
@@ -106,8 +111,9 @@ static FRESULT createLogFile(void)
     char fileName[13];   /* "LOG_XXXX.CSV" = 12 chars + null */
     snprintf(fileName, sizeof(fileName), "LOG_%04u.CSV", nextNum);
 
-    // Create log File
-    // Only overwrite if we're at the max number (9999) and that file already exists — otherwise create new without risking overwriting
+    // Create log file
+    // Only overwrite if we're at the max number (9999) and that file already exists —
+    // otherwise create new without risking overwriting existing data.
     FRESULT res = (nextNum == 9999 && findHighestLogNumber() == 9999)
                   ? SD_FileOpen(&logFile, fileName, FA_CREATE_ALWAYS | FA_WRITE)    // Overwrite
                   : SD_FileOpen(&logFile, fileName, FA_CREATE_NEW | FA_WRITE);      // Don't allow overwrite
@@ -116,63 +122,76 @@ static FRESULT createLogFile(void)
         return res;
     }
 
-    // Write Header Row
-    UINT written;
-    res = SD_FileWrite(&logFile, CSV_HEADER, strlen(CSV_HEADER), &written);
-    if (res != FR_OK || written != strlen(CSV_HEADER)) {
+    // Write header row
+    UINT numBytesWritten;
+    res = SD_FileWrite(&logFile, CSV_HEADER, strlen(CSV_HEADER), &numBytesWritten);
+    if (res != FR_OK || numBytesWritten != strlen(CSV_HEADER)) {
         myprintf("DL: header write failed (%d)\r\n", res);
         SD_FileClose(&logFile);
         return res;
     }
 
-    fileOpen = 1;
+    isFileOpen = 1;
     myprintf("DL: logging to %s\r\n", fileName);
     return FR_OK;
 }
 
 /*
- * Format and write one CSV row using the latest IMU and BME680 data.
- * On failure, closes the file and transitions to DL_ERROR.
+ * Format and write one CSV row using the latest IMU data and the cached BME680 data.
+ *
+ * Each IMU reading carries its own timestamp (set in lsm6_readData at the moment of
+ * the SPI read), and the BME cache carries the timestamp from when that BME measurement
+ * completed. This allows post-processing to correctly align data from the two sensors.
+ *
+ * On write failure, closes the file handle and transitions  the DataLogger_StateMachine_Task() state to DL_ERROR.
+ *
+ * @param writeTimestamp  HAL_GetTick() value at the time this row is being written,
+ *                        used as a simple wall-clock reference column.
  */
-static void writeCSVRow(uint32_t timestamp)
+static void writeCSVRow(uint32_t writeTimestamp)
 {
-    // Get latest IMU data
     LSM6DSO_Data_t imu;
     if (!lsm6_readData(&imu)) {
         myprintf("DL: failed to read IMU data. Is it initialized?\r\n");
     }
 
-    char line[192];
+    char line[224];
 
-    // TODO come back to this and think about the timing, we want the timestamp to be as close to correct as it can be for the IMU data and the BME data, if we are just using cache we have no way of knowing when that data was actually obtained
-    // TODO bmeValid should be renamed to something more like bmeHasReturnedFirstReading
-    // Write CSV row with all data — if BME680 hasn't returned its first reading yet, leave those columns empty
-    if (bmeValid) {
+    if (bmeHasReturnedFirstReading) {
         snprintf(line, sizeof(line),
-                 "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
-                 (unsigned long)timestamp,
+                 "%lu,"
+                 "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%u,%.2f,"
+                 "%lu,%.2f,%.2f,%.2f\r\n",
+                 (unsigned long)writeTimestamp,
+                 (unsigned long)imu.timestamp_ms,
                  imu.accel_mg[0], imu.accel_mg[1], imu.accel_mg[2],
                  imu.gyro_mdps[0], imu.gyro_mdps[1], imu.gyro_mdps[2],
+                 imu.isAccelDataNew, imu.isGyroDataNew,
                  imu.temperature_degC,
+                 (unsigned long)bmeCache.timestamp_ms,
                  bmeCache.pressure_hPa,
                  bmeCache.temperature_degC,
                  bmeCache.humidity_pctRH);
     } else {
-        /* BME680 hasn't returned its first reading yet — leave columns empty */
+        /* BME680 hasn't returned its first reading yet — leave BME columns empty */
         snprintf(line, sizeof(line),
-                 "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,,,\r\n",
-                 (unsigned long)timestamp,
+                 "%lu,"
+                 "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%u,%.2f,"
+                 ",,, \r\n",
+                 (unsigned long)writeTimestamp,
+                 (unsigned long)imu.timestamp_ms,
                  imu.accel_mg[0], imu.accel_mg[1], imu.accel_mg[2],
                  imu.gyro_mdps[0], imu.gyro_mdps[1], imu.gyro_mdps[2],
+                 imu.isAccelDataNew, imu.isGyroDataNew,
                  imu.temperature_degC);
     }
 
-    UINT written;
-    FRESULT res = SD_FileWrite(&logFile, line, strlen(line), &written);
+    UINT numBytesWritten;
+    FRESULT res = SD_FileWrite(&logFile, line, strlen(line), &numBytesWritten);
     if (res != FR_OK) {
         myprintf("DL: write failed (%d) — entering error state\r\n", res);
-        fileOpen = 0;   // TODO I like variables like this to be named starting with "is" or "has" to make it more clear that they are booleans, maybe rename to isFileOpen
-        dlState = DL_ERROR;
+        isFileOpen = 0;
+        dlState    = DL_ERROR;
         return;
     }
 }
@@ -183,26 +202,25 @@ static void writeCSVRow(uint32_t timestamp)
 
 void DataLogger_Init(void)
 {
-    bmeValid    = 0;
-    fileOpen    = 0;
-    dlState     = DL_IDLE;
-    prevSdState = SD_GetState();
+    bmeHasReturnedFirstReading = 0;
+    isFileOpen                 = 0;
+    dlState                    = DL_IDLE;
+    prevSdState                = SD_GetState();
 
     bme680_setGasEnabled(0);         /* Gas sensor not needed for rocketry */
     bme680_triggerMeasurement();     /* Kick off first measurement immediately */
     bmeLastTrigger = HAL_GetTick();
 }
 
-// TODO I would like to rename all the task functions to *_StateMachine_Task() instead of *_Update()
 /*
  * Single update task — register with the scheduler at 5 ms.
  *
  * Every call : run BME680 state machine.
- * Every DATALOGGER_IMU_POLL_MS : read IMU and write a CSV row.
+ * Every DATALOGGER_CSV_WRITE_MS : read IMU and write a CSV row.
  */
-void DataLogger_Update(void)
+void DataLogger_StateMachine_Task(void)
 {
-    uint32_t  now          = HAL_GetTick();
+    uint32_t   now          = HAL_GetTick();
     SD_State_t currentSdState = SD_GetState();
 
     /* --- Edge detection: react to SD card state transitions --- */
@@ -211,29 +229,30 @@ void DataLogger_Update(void)
             /* Card just became mounted — try to open a log file */
             dlState = DL_OPENING;
         }
-        if (currentSdState != SD_MOUNTED && fileOpen) {
+        if (currentSdState != SD_MOUNTED && isFileOpen) {
             /* Card removed or error — abandon the file handle.
                Do NOT call SD_FileClose: the filesystem is already gone. */
-            fileOpen = 0;
-            dlState  = DL_IDLE;
+            isFileOpen = 0;
+            dlState    = DL_IDLE;
         }
         prevSdState = currentSdState;
     }
 
     /* --- BME680 polling (runs every call = every 5 ms) --- */
-    bme680_update();
+    bme680_stateMachine();
     if (bme680_isDataReady()) {
         bmeCache = bme680_getData();
-        bmeValid = 1;
+        bmeHasReturnedFirstReading = 1;
     }
 
-    // Trigger a new BME680 measurement every DATALOGGER_BME_TRIGGER_MS (50 ms)
+    /* Trigger a new BME680 measurement every DATALOGGER_BME_TRIGGER_MS (50 ms) */
     if ((now - bmeLastTrigger) >= DATALOGGER_BME_TRIGGER_MS) {
         bme680_triggerMeasurement();
         bmeLastTrigger = now;
     }
 
-    // Note the IMU data is automatically continuously updated in the background, so we don't need to trigger it like we do for the BME680
+    /* Note: IMU data is read on demand in writeCSVRow() — the sensor runs
+       continuously in the background at its configured ODR. */
 
     /* --- DataLogger state machine --- */
     switch (dlState)
@@ -244,19 +263,16 @@ void DataLogger_Update(void)
 
         case DL_OPENING:
             if (createLogFile() == FR_OK) {
-                imuLastTick = now;
-                dlState     = DL_LOGGING;
+                lastCsvWriteTick = now;
+                dlState          = DL_LOGGING;
             } else {
                 dlState = DL_ERROR;
             }
             break;
 
         case DL_LOGGING:
-            // TODO DATALOGGER_IMU_POLL_MS should be renamed to something like DATALOGGER_CSV_WRITE_MS since it's not really about polling the IMU, we are just reading the latest data that is being continuously updated in the background by the IMU driver, we are really just writing a new CSV row every DATALOGGER_CSV_WRITE_MS
-            // TODO I would like to rename imuLastTick to something like lastCsvWriteTick
-            // TODO I feel there is a better way to do the timing here, trigger a measurement at the end of each write and then wait for the next measurement to be ready/valid and then log the time that that measurement was captured.  Perhaps we should have timing values associated with the data structs returned from the sensors instead of here, since we really want the timing associated with the sensors
-            if ((now - imuLastTick) >= DATALOGGER_IMU_POLL_MS) {
-                imuLastTick = now;
+            if ((now - lastCsvWriteTick) >= DATALOGGER_CSV_WRITE_MS) {
+                lastCsvWriteTick = now;
                 writeCSVRow(now);
             }
             break;

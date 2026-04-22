@@ -11,7 +11,7 @@
  *   ERROR             — Mount failed; stays here until card removal/re-insertion.
  *
  * The HAL_GPIO_EXTI_Callback override sets a flag on SD_CARD_DETECT changes.
- * SD_Update() processes the flag and reads the pin to determine direction.
+ * SD_StateMachine() processes the flag and reads the pin to determine direction.
  *
  * File naming, CSV headers, and log file lifecycle are handled outside of this - in the caller (DataLogger).
  *
@@ -33,7 +33,7 @@
 static SD_State_t  state            = SD_NOT_PRESENT;
 static FATFS       fatFs;
 
-/* Set to 1 from EXTI ISR; cleared after SD_Update processes it */
+/* Set to 1 from EXTI ISR; cleared after SD_StateMachine() processes it */
 static volatile uint8_t cardDetectChangedFlag = 0;
 
 /* Tick captured when card is first detected — used for the CARD_SETTLE_MS wait */
@@ -81,7 +81,7 @@ void SD_Init(void)
     }
 }
 
-void SD_Update(void)
+void SD_StateMachine(void)
 {
     switch (state)
     {

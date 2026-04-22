@@ -34,8 +34,7 @@
 #include <stdio.h>
 #include "lsm6dso32_reg.h"
 #include "main.h"	// For LSM6DSO_CS pin defines and myprintf()
-#include "stm32h7xx_hal.h"	// For HAL_Delay() function
-#include "stm32h7xx_hal_uart.h"	// To print read data to UART3
+#include "stm32h7xx_hal.h"	// For HAL_Delay() and HAL_GetTick()
 #include "stm32h7xx_hal_gpio.h"	// To control LSM6DSO_CS pin
 #include "stm32h7xx_hal_spi.h"	// To communicate with the LSM6DSO Chip vs SPI1
 #include "lsm6dso32_device.h"
@@ -55,17 +54,12 @@ static float_t acceleration_mg[3];
 static float_t angular_rate_mdps[3];
 static float_t temperature_degC;
 static uint8_t whoamI, rst;
-static uint8_t tx_buffer[1000];
 stmdev_ctx_t dev_ctx;
 uint8_t isInitialized = 0;
-
-/* Extern variables ----------------------------------------------------------*/
-extern UART_HandleTypeDef huart3;	// For communicating back to PC via UART3
 
 /* Private functions ---------------------------------------------------------*/
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len);
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t len);
-static void tx_com( uint8_t *tx_buffer, uint16_t len );
 
 
 /* Main Example --------------------------------------------------------------*/
@@ -113,62 +107,68 @@ uint8_t lsm6_init(void)
   /* Set ODR (Output Data Rate) and power mode*/
   lsm6dso32_xl_data_rate_set(&dev_ctx, LSM6DSO32_XL_ODR_104Hz_HIGH_PERF);
   lsm6dso32_gy_data_rate_set(&dev_ctx, LSM6DSO32_GY_ODR_104Hz_HIGH_PERF);
+  // TODO Do we need to init temp data as well?
 
   isInitialized = 1;
   return 0; // To indicate success
 }
 
 /*
- * Read fresh sensor data into the provided struct.
- * Checks the status register; only reads axes that have new data available.
- * Stale axes return the last successfully read value.
- * Returns 0 on success, 1 if not initialized or out param is NULL.
- * out.data_valid is set to 1 if at least accel data was fresh, otherwise 0.  // TODO lets create an isAccelDataNew and isGyroDataNew and then log those to the log file as well
+ * @brief  Read the latest sensor data into the provided struct.
+ *
+ * Checks the status register for each axis. Only reads axes that have fresh
+ * data available; stale axes return the last successfully read value.
+ * isAccelDataNew and isGyroDataNew indicate whether each axis had new data
+ * this call, which is useful for detecting stale readings in the log file.
+ *
+ * @param  out  Pointer to LSM6DSO_Data_t struct to populate.
+ * @return 0 on success, 1 if not initialized or out is NULL.
  */
 uint8_t lsm6_readData(LSM6DSO_Data_t *out)
 {
   if (!isInitialized || out == NULL) return 1;
 
-  out->data_valid = 0;
+  out->isAccelDataNew = 0;
+  out->isGyroDataNew  = 0;
+  out->isTempDataNew  = 0;
+  out->timestamp_ms   = HAL_GetTick();
 
+  // Get latest status register to check which axes have fresh data available
   lsm6dso32_reg_t reg;
-  /* Read output only if new data is available */
-  // Get status
   lsm6dso32_status_reg_get(&dev_ctx, &reg.status_reg);
 
-  // If accelerometer data available...
+  // If accelerometer data available, read fresh values
   if (reg.status_reg.xlda) {
-      /* Read acceleration data */
       memset(data_raw_acceleration, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_acceleration_raw_get(&dev_ctx, data_raw_acceleration);
       acceleration_mg[0] = lsm6dso32_from_fs16_to_mg(data_raw_acceleration[0]);
       acceleration_mg[1] = lsm6dso32_from_fs16_to_mg(data_raw_acceleration[1]);
       acceleration_mg[2] = lsm6dso32_from_fs16_to_mg(data_raw_acceleration[2]);
-      out->data_valid = 1;
+      out->isAccelDataNew = 1;
   }
   out->accel_mg[0] = acceleration_mg[0];
   out->accel_mg[1] = acceleration_mg[1];
   out->accel_mg[2] = acceleration_mg[2];
 
-  // If gyro data available...
+  // If gyro data available, read fresh values
   if (reg.status_reg.gda) {
-      /* Read angular rate field data */
       memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate);
       angular_rate_mdps[0] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[0]);
       angular_rate_mdps[1] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[1]);
       angular_rate_mdps[2] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[2]);
+      out->isGyroDataNew = 1;
   }
   out->gyro_mdps[0] = angular_rate_mdps[0];
   out->gyro_mdps[1] = angular_rate_mdps[1];
   out->gyro_mdps[2] = angular_rate_mdps[2];
 
-  // If temperature data available...
+  // If temperature data available, read fresh value
   if (reg.status_reg.tda) {
-      /* Read temperature data */
       memset(&data_raw_temperature, 0x00, sizeof(int16_t));
       lsm6dso32_temperature_raw_get(&dev_ctx, &data_raw_temperature);
       temperature_degC = lsm6dso32_from_lsb_to_celsius(data_raw_temperature);
+      out->isTempDataNew  = 1;  // TODO use this
   }
   out->temperature_degC = temperature_degC;
 
@@ -186,20 +186,11 @@ uint8_t lsm6_getAndPrintData(void)
     LSM6DSO_Data_t data;
     lsm6_readData(&data);
 
-    // TODO perhaps change this to use myprintf function instead if it makes sense to do so
-    snprintf((char *)tx_buffer, sizeof(tx_buffer),
-             "Accel [mg]: %4.2f\t%4.2f\t%4.2f\r\n",
+    myprintf("Accel [mg]: %4.2f\t%4.2f\t%4.2f\r\n",
              data.accel_mg[0], data.accel_mg[1], data.accel_mg[2]);
-    tx_com(tx_buffer, strlen((char const *)tx_buffer));
-
-    snprintf((char *)tx_buffer, sizeof(tx_buffer),
-             "Gyro [mdps]: %4.2f\t%4.2f\t%4.2f\r\n",
+    myprintf("Gyro [mdps]: %4.2f\t%4.2f\t%4.2f\r\n",
              data.gyro_mdps[0], data.gyro_mdps[1], data.gyro_mdps[2]);
-    tx_com(tx_buffer, strlen((char const *)tx_buffer));
-
-    snprintf((char *)tx_buffer, sizeof(tx_buffer),
-             "Temp [degC]: %6.2f\r\n", data.temperature_degC);
-    tx_com(tx_buffer, strlen((char const *)tx_buffer));
+    myprintf("Temp [degC]: %6.2f\r\n", data.temperature_degC);
 
     return 0;
 }
@@ -245,14 +236,3 @@ static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
   return 0;
 }
 
-/*
- * @brief  Send buffer to console (platform dependent)
- *
- * @param  tx_buffer     buffer to transmit
- * @param  len           number of byte to send
- *
- */
-static void tx_com(uint8_t *tx_buffer, uint16_t len)
-{
-  HAL_UART_Transmit(&huart3, tx_buffer, len, 1000);
-}

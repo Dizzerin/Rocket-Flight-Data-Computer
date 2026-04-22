@@ -124,8 +124,9 @@ typedef struct {
 static BME680_State_t    state        = BME680_STATE_IDLE;
 static BME680_CalibData_t calib;
 static BME680_Data_t     latestData;
-static uint8_t           isInitialized = 0;
-static uint8_t           gasEnabled    = 0;   /* 0 = gas sensor off (default), 1 = on */
+static uint8_t           isInitialized        = 0;
+static uint8_t           gasEnabled           = 0;    /* 0 = gas sensor off (default), 1 = on */
+static uint8_t           lastGasEnabledState = 0xFF; /* 0xFF = uninitialized, forces first write */
 static uint8_t           currentPage   = 0;   /* Tracks active SPI page */
 static uint32_t          measStartTick = 0;
 static float             lastTempC     = 25.0f; /* Ambient temp estimate for heater calc */
@@ -423,12 +424,17 @@ void bme680_triggerMeasurement(void)
     state = BME680_STATE_TRIGGER_PENDING;
 }
 
-/* BME680 state machine. Call repeatedly.
- * Returns: BME680_OK    - idle or data ready
- *          BME680_BUSY  - measurement in progress
- *          BME680_ERROR - hardware or timeout fault */
-// TODO rename this to something that include SM or StateMachine to make it clear what it is, maybe bme680_StateMachine()
-uint8_t bme680_update(void)
+/*
+ * @brief  BME680 measurement state machine. Call repeatedly.
+ *
+ * Drives the non-blocking measurement pipeline: trigger → wait → read → compensate.
+ * Safe to call at any rate greater than required measurement rate; returns immediately if no action is needed.
+ *
+ * @return BME680_OK    — idle or data ready (check bme680_isDataReady() for new data)
+ *         BME680_BUSY  — measurement in progress
+ *         BME680_ERROR — hardware fault or timeout
+ */
+uint8_t bme680_stateMachine(void)
 {
     if (!isInitialized) return BME680_ERROR;
 
@@ -445,17 +451,20 @@ uint8_t bme680_update(void)
             /* Humidity oversampling must be written before ctrl_meas */
             spi_write(REG_CTRL_HUM, OSRS_H & 0x07);
 
-            // TODO could optimize this better to only write the heater/gas bits if gasEnabled changes
-            if (gasEnabled) {
-                /* Heater on, gas conversion enabled, heater profile 0 */
-                spi_write(REG_CTRL_GAS0, 0x00);
-                spi_write(REG_CTRL_GAS1, (1U << 4) | 0x00);
-                spi_write(REG_GAS_WAIT0, GAS_WAIT_VAL);
-                spi_write(REG_RES_HEAT0, calc_res_heat(HEATER_TARGET_DEGC));
-            } else {
-                /* Heater forced off, gas conversion disabled */
-                spi_write(REG_CTRL_GAS0, (1U << 3));   /* heat_off = 1 */
-                spi_write(REG_CTRL_GAS1, 0x00);        /* run_gas = 0 */
+            /* Only write gas/heater config registers when gasEnabled has changed */
+            if (gasEnabled != lastGasEnabledState) {
+                if (gasEnabled) {
+                    /* Heater on, gas conversion enabled, heater profile 0 */
+                    spi_write(REG_CTRL_GAS0, 0x00);
+                    spi_write(REG_CTRL_GAS1, (1U << 4) | 0x00);
+                    spi_write(REG_GAS_WAIT0, GAS_WAIT_VAL);
+                    spi_write(REG_RES_HEAT0, calc_res_heat(HEATER_TARGET_DEGC));
+                } else {
+                    /* Heater forced off, gas conversion disabled */
+                    spi_write(REG_CTRL_GAS0, (1U << 3));   /* heat_off = 1 */
+                    spi_write(REG_CTRL_GAS1, 0x00);        /* run_gas = 0 */
+                }
+                lastGasEnabledState = gasEnabled;
             }
 
             /* Temperature/pressure oversampling + forced mode trigger (single write) */
@@ -485,10 +494,12 @@ uint8_t bme680_update(void)
             if (!(meas_status & 0x80)) {
                 return BME680_BUSY;     /* Measurement not yet complete */
             }
+            // Otherwise new data is ready!
 
             /* Burst-read all measurement registers 0x1D-0x2B (15 bytes) */
             uint8_t raw[15];
             spi_read(REG_MEAS_STATUS, raw, 15);
+            latestData.timestamp_ms     = HAL_GetTick();    // Save timestamp for when this data was read!
 
             /* Parse raw ADC values from burst buffer:
              * raw[0]       = meas_status_0 (0x1D)
