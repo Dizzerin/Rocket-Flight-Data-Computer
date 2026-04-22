@@ -27,8 +27,9 @@
 #include <stdarg.h> //for va_list var arg functions
 #include "lsm6dso32_device.h"
 #include "SD_Card.h"
-#include "bme680_example.h"
-
+#include "bme680_spi.h"
+#include "DataLogger.h"
+#include "Scheduler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -71,7 +72,7 @@ static void MX_SPI1_Init(void);
 static void MX_I2C4_Init(void);
 static void MX_SPI3_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void LED_Toggle(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -131,62 +132,28 @@ int main(void)
   MX_I2C4_Init();
   MX_SPI3_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(500);        /* Let peripherals settle after power-on */
 
-  /// Test SD Card writing
-  SD_initAndMount();
-  //SD_createAndOpenFile("test2.txt");
-  //SD_openFileForWriting("test2.txt");
-  //SD_writeToOpenedFile("Something new in here now\r\n");
-  //SD_writeToOpenedFile("Did the text get changed?\r\n");
-  //SD_closeFile();
-  //SD_unmount();
-
-
-  // Initialize LSM6DSO32 IMU device
-  HAL_Delay(1000);
   lsm6_init();
+  bme680_init();
+  SD_Init();
+  DataLogger_Init();
 
-  // Initialize BME680 barometer
-  bme680_exampleInit();
+  Scheduler_Init();
+  Scheduler_RegisterTask(SD_Update,              100);
+  Scheduler_RegisterTask(DataLogger_UpdateBME,     5);
+  Scheduler_RegisterTask(DataLogger_UpdateIMU,    10);
+  Scheduler_RegisterTask(LED_Toggle,             500);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t count = 0;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    switch (count++)
-    {
-      case 0:
-      case 1:
-        // This code will run twice as often as the other code
-        //myprintf("Runs 2x as often\r\n");
-        break;
-
-      case 2:
-        // This will run half as often
-        //myprintf("Runs 1/2 as often\r\n");
-        break;
-
-      default:
-        break;
-    }
-    // wrap count around
-    if (count >= 3)
-      count = 0;
-
-    // Blink LED
-    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);	// Toggle an LED
-    HAL_Delay(1000);	// TODO don't delay like this in the main loop - this is called blocking code as it blocks everything, we want non-blocking code
-
-    // Test LSM6DSO32 IMU Device
-    lsm6_getAndPrintData();
-
-    // Update BME680 barometer state machine
-    bme680_exampleUpdate();
+    Scheduler_Run();
   }
   /* USER CODE END 3 */
 }
@@ -579,7 +546,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+static void LED_Toggle(void)
+{
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+}
 /* USER CODE END 4 */
 
  /* MPU Configuration */

@@ -1,153 +1,266 @@
 /*
  * SD_Card.c
  *
- *  Created on: Mar 16, 2026
- *      Author: nicholaschang
+ * SD card state machine with card-detect interrupt support.
+ *
+ * States:
+ *   NOT_PRESENT      — No card (detect pin HIGH, active-low).
+ *   PRESENT_UNMOUNTED— Card just inserted; waiting 500 ms for power settle.
+ *  // TODO should we separate this out?  Better separation of concerns so that this is just a generic SD card driver and somewhere else we handle the log file naming and creation etc.  That should probably be done in the DataLogger module instead.
+ *   MOUNTING         — Mounting FatFS, scanning for existing log files,
+ *                      creating the next LOG_XXXX.CSV, writing the header.
+ *   READY            — Log file open and accepting writes.
+ *   ERROR            — Mount or file-create failed; stays here until removal.
+ *
+ * The HAL_GPIO_EXTI_Callback override sets a flag on SD_CARD_DETECT changes.
+ * SD_Update() processes the flag and reads the pin to determine direction.
+ *
+ * File naming uses 8.3 format: LOG_0001.CSV through LOG_9999.CSV since long filename support is not currently enabled in CubeMX.
+ * The directory is scanned on every mount to find the highest existing number
+ * and create the next one.
+ *
+ * Write strategy: keep file open, call f_sync() after each write.
  */
 
 #include <stdio.h>
-#include <stdint.h>
 #include <string.h>
 #include "SD_Card.h"
 #include "fatfs.h"
+#include "main.h"           /* SD_CARD_DETECT pin defines, myprintf() */
 #include "stm32h7xx_hal.h" /* Provide the low-level HAL functions - GPIO pin for SD_CARD_DETECT*/
 
-// TODO implement SD_CARD_DETECT (active low I believe)
+/* =========================================================================
+ * Module state
+ * ========================================================================= */
 
-// Local globals vars
-//some variables for FatFs
-FATFS FatFs; 	//Fatfs handle
-FIL fil; 		//File handle
-FRESULT fres; //Result after operations
+static SD_State_t  state            = SD_NOT_PRESENT;
+static FATFS       fatFs;
+static FIL         logFile; // TODO change to generic file handle if we separate out the log file management from the SD card driver
+static uint8_t     fileOpen         = 0;
 
+/* Set to 1 from EXTI ISR; cleared after SD_Update processes it */
+static volatile uint8_t cardDetectChanged = 0;
 
-FRESULT SD_initAndMount(void)
+/* Tick captured when card is first detected — used for the CARD_SETTLE_MS wait */
+static uint32_t mountWaitStartTick = 0;
+
+#define CARD_SETTLE_MS  500U
+
+/* CSV header written once at the top of each new log file */
+static const char CSV_HEADER[] =
+    "Timestamp_ms,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,"
+    "Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,"
+    "IMU_Temp_C,Pressure_hPa,BME_Temp_C,Humidity_pctRH\r\n";
+
+/* =========================================================================
+ * EXTI callback — called from HAL interrupt context
+ * ========================================================================= */
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    myprintf("Initializing and Mounting SD Card...\r\n");
+    if (GPIO_Pin == SD_CARD_DETECT_Pin) {
+        cardDetectChanged = 1;
+    }
+}
 
-    HAL_Delay(1000); //a short delay is important to let the SD card settle
+/* =========================================================================
+ * Internal helpers
+ * ========================================================================= */
 
-    //Open the file system
-    fres = f_mount(&FatFs, "", 1); //1=mount now
-    if (fres != FR_OK) {
-    	myprintf("f_mount error (%i)\r\n", fres);
-    	return 1;
+/* Returns 1 if the SD card is physically present (pin LOW = active low). */
+static uint8_t cardIsPresent(void)
+{
+    return (HAL_GPIO_ReadPin(SD_CARD_DETECT_GPIO_Port, SD_CARD_DETECT_Pin)
+            == GPIO_PIN_RESET) ? 1 : 0;
+}
+
+/*
+ * Scan the root directory for files matching LOG_XXXX.CSV.
+ * Returns the highest XXXX found, or 0 if none exist.
+ */
+static uint16_t findHighestLogNumber(void)
+{
+    DIR     dir;
+    FILINFO fno;
+    uint16_t maxNum = 0;
+
+    if (f_opendir(&dir, "/") != FR_OK) return 0;
+
+    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != '\0') {
+        /* Match LOG_XXXX.CSV — name must be exactly 12 chars (8.3 + dot) */
+        if (strncmp(fno.fname, "LOG_", 4) == 0) {
+            /* Extract the 4-digit number after "LOG_" */
+            uint16_t num = (uint16_t)atoi(fno.fname + 4);
+            if (num > maxNum) maxNum = num;
+        }
+    }
+    f_closedir(&dir);
+    return maxNum;
+}
+
+/*
+ * Mount the filesystem, find the next log file number, create the file,
+ * write the CSV header, and leave the file open for appending.
+ * Returns FR_OK on success.
+ */
+static FRESULT mountAndCreateLog(void)
+{
+    FRESULT res;
+    UINT    written;
+
+    res = f_mount(&fatFs, "", 1);
+    if (res != FR_OK) {
+        myprintf("SD: f_mount failed (%d)\r\n", res);
+        return res;
     }
 
-    //Let's get some statistics from the SD card
-    DWORD free_clusters, free_sectors, total_sectors;
+    uint16_t nextNum = findHighestLogNumber() + 1;
+    if (nextNum > 9999) nextNum = 9999;   /* clamp — unlikely but safe */
 
-    FATFS* getFreeFs;
+    char fileName[13];   /* "LOG_XXXX.CSV" = 12 chars + null */
+    snprintf(fileName, sizeof(fileName), "LOG_%04u.CSV", nextNum);
 
-    fres = f_getfree("", &free_clusters, &getFreeFs);
-    if (fres != FR_OK) {
-    	myprintf("f_getfree error (%i)\r\n", fres);
-    	return 1;
+    res = f_open(&logFile, fileName, FA_CREATE_NEW | FA_WRITE);
+    if (res != FR_OK) {
+        myprintf("SD: f_open(%s) failed (%d)\r\n", fileName, res);
+        f_mount(NULL, "", 0);
+        return res;
     }
 
-    //Formula comes from ChaN's documentation
-    total_sectors = (getFreeFs->n_fatent - 2) * getFreeFs->csize;
-    free_sectors = free_clusters * getFreeFs->csize;
+    res = f_write(&logFile, CSV_HEADER, strlen(CSV_HEADER), &written);
+    if (res != FR_OK || written != strlen(CSV_HEADER)) {
+        myprintf("SD: header write failed (%d)\r\n", res);
+        f_close(&logFile);
+        f_mount(NULL, "", 0);
+        return (res != FR_OK) ? res : FR_DISK_ERR;
+    }
 
-    myprintf("Successfully initialized and mounted SD card!\r\n");
-    myprintf("SD card stats:\r\n"
-    		"%10lu KiB total drive space.\r\n"
-    		"%10lu KiB available.\r\n", total_sectors / 2, free_sectors / 2);
+    f_sync(&logFile);
+    fileOpen = 1;
 
+    myprintf("SD: ready — %s created\r\n", fileName);
     return FR_OK;
 }
 
-
-
-FRESULT SD_read(void)
+/* Close log file and unmount cleanly. */
+static void unmount(void)
 {
-	//Example code for reading a file
-
-    // ----------- START reading ------------------ //
-	myprintf("Attempting to read test.txt file...\r\n");
-
-    //Now let's try to open file "test.txt"
-    fres = f_open(&fil, "test.txt", FA_READ);
-    if (fres != FR_OK) {
-    	myprintf("f_open error (%i)\r\n");
-    	while(1);
+    if (fileOpen) {
+        f_close(&logFile);
+        fileOpen = 0;
     }
-    myprintf("I was able to open 'test.txt' for reading!\r\n");
+    f_mount(NULL, "", 0);
+}
 
-    //Read 30 bytes from "test.txt" on the SD card
-    BYTE readBuf[30];
+/* =========================================================================
+ * Public API
+ * ========================================================================= */
 
-    //We can either use f_read OR f_gets to get data out of files
-    //f_gets is a wrapper on f_read that does some string formatting for us
-    TCHAR* rres = f_gets((TCHAR*)readBuf, 30, &fil);
-    if(rres != 0) {
-    	myprintf("Read string from 'test.txt' contents: %s\r\n", readBuf);
+void SD_Init(void)
+{
+    fileOpen = 0;
+    cardDetectChanged = 0;
+
+    if (cardIsPresent()) {
+        myprintf("SD: card present at boot — starting settle wait\r\n");
+        mountWaitStartTick = HAL_GetTick();
+        state = SD_PRESENT_UNMOUNTED;
     } else {
-    	myprintf("f_gets error (%i)\r\n", fres);
+        myprintf("SD: no card at boot\r\n");
+        state = SD_NOT_PRESENT;
+    }
+}
+
+void SD_Update(void)
+{
+    switch (state)
+    {
+        case SD_NOT_PRESENT:
+            if (cardDetectChanged) {
+                cardDetectChanged = 0;
+                if (cardIsPresent()) {
+                    myprintf("SD: card inserted — waiting for settle\r\n");
+                    mountWaitStartTick = HAL_GetTick();
+                    state = SD_PRESENT_UNMOUNTED;
+                }
+            }
+            break;
+
+        case SD_PRESENT_UNMOUNTED:
+            /* Check for removal during the settle wait */
+            if (cardDetectChanged) {
+                cardDetectChanged = 0;
+                if (!cardIsPresent()) {
+                    myprintf("SD: card removed during settle\r\n");
+                    state = SD_NOT_PRESENT;
+                    break;
+                }
+            }
+            if ((HAL_GetTick() - mountWaitStartTick) >= CARD_SETTLE_MS) {
+                state = SD_MOUNTING;
+            }
+            break;
+
+        case SD_MOUNTING:
+            if (mountAndCreateLog() == FR_OK) {
+                state = SD_READY;
+            } else {
+                state = SD_ERROR;
+            }
+            break;
+
+        case SD_READY:
+            if (cardDetectChanged) {
+                cardDetectChanged = 0;
+                if (!cardIsPresent()) {
+                    myprintf("SD: card removed — unmounting\r\n");
+                    unmount();
+                    state = SD_NOT_PRESENT;
+                }
+            }
+            break;
+
+        case SD_ERROR:
+            if (cardDetectChanged) {
+                cardDetectChanged = 0;
+                if (!cardIsPresent()) {
+                    myprintf("SD: card removed (was in error state)\r\n");
+                    unmount();
+                    state = SD_NOT_PRESENT;
+                }
+            }
+            break;
+    }
+}
+
+SD_State_t SD_GetState(void)
+{
+    return state;
+}
+
+uint8_t SD_IsReady(void)
+{
+    return (state == SD_READY) ? 1 : 0;
+}
+
+FRESULT SD_WriteLine(const char *line)
+{
+    if (state != SD_READY || !fileOpen) return FR_NOT_READY;
+
+    UINT written;
+    FRESULT res = f_write(&logFile, line, strlen(line), &written);
+    if (res != FR_OK) {
+        myprintf("SD: write failed (%d) — entering error state\r\n", res);
+        unmount();
+        state = SD_ERROR;
+        return res;
     }
 
-    //Be tidy - don't forget to close your file!
-    f_close(&fil);
-    // ----------- END reading ------------------ //
-
-	// Todo return proper value
-	return FR_OK;
+    res = f_sync(&logFile);
+    if (res != FR_OK) {
+        myprintf("SD: f_sync failed (%d) — entering error state\r\n", res);
+        unmount();
+        state = SD_ERROR;
+    }
+    return res;
 }
-
-FRESULT SD_createAndOpenFile(const char* fileName)
-{
-	myprintf("Attempting to create %s\r\n", fileName);
-
-	// Create file
-	fres = f_open(&fil, fileName, FA_CREATE_NEW);
-	if(fres == FR_OK) {
-		myprintf("Created file\r\n");
-	} else {
-		myprintf("f_open error (%i)\r\n", fres);
-	}
-
-	return fres;
-
-}
-
-FRESULT SD_openFileForWriting(const char* fileName)
-{
-	// TODO make sure the file isn't already open
-
-	// Open file
-	fres = f_open(&fil, fileName, FA_OPEN_APPEND | FA_WRITE);
-	if(fres == FR_OK) {
-		myprintf("Opened file\r\n");
-	} else {
-		myprintf("f_open error (%i)\r\n", fres);
-	}
-
-	return fres;
-}
-
-FRESULT SD_writeToOpenedFile(const char* string)
-{
-	// TODO make sure file is opened!
-
-	// Write the string into the file
-	UINT bytesWrote;
-	fres = f_write(&fil, string, strlen(string), &bytesWrote);
-	if(fres == FR_OK) {
-			myprintf("Wrote %i bytes to file\r\n", bytesWrote);
-	} else {
-		myprintf("f_write error (%i)\r\n");
-	}
-
-	return fres;
-}
-
-FRESULT SD_closeFile(void)
-{
-	return f_close(&fil);
-}
-
-FRESULT SD_unmount(void)
-{
-    return f_mount(NULL, "", 0);
-}
-

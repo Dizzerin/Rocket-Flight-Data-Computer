@@ -104,83 +104,94 @@ uint8_t lsm6_init(void)
   lsm6dso32_xl_full_scale_set(&dev_ctx, LSM6DSO32_16g);
   lsm6dso32_gy_full_scale_set(&dev_ctx, LSM6DSO32_2000dps);
   /* Set ODR (Output Data Rate) and power mode*/
-  lsm6dso32_xl_data_rate_set(&dev_ctx, LSM6DSO32_XL_ODR_12Hz5_LOW_PW);
-  lsm6dso32_gy_data_rate_set(&dev_ctx, LSM6DSO32_GY_ODR_12Hz5_HIGH_PERF);
+  lsm6dso32_xl_data_rate_set(&dev_ctx, LSM6DSO32_XL_ODR_104Hz_HIGH_PERF);
+  lsm6dso32_gy_data_rate_set(&dev_ctx, LSM6DSO32_GY_ODR_104Hz_HIGH_PERF);
 
   isInitialized = 1;
   return 0; // To indicate success
 }
 
-// TODO remove me
-#include "SD_Card.h"
-
-/* Read samples in polling mode (no int) */
-uint8_t lsm6_getAndPrintData(void)
+/*
+ * Read fresh sensor data into the provided struct.
+ * Checks the status register; only reads axes that have new data available.
+ * Stale axes return the last successfully read value.
+ * Returns 0 on success, 1 if not initialized or out param is NULL.
+ */
+uint8_t lsm6_readData(LSM6DSO_Data_t *out)
 {
-	if (!isInitialized)
-	{
-		myprintf("Cannot read data because device is not initialized.\r\n");
-		return 1;
-	}
+  if (!isInitialized || out == NULL) return 1;
 
-	// TODO REMOVE ME
-	SD_openFileForWriting("test2.txt");
+  out->data_valid = 0;
 
-	lsm6dso32_reg_t reg;
-    /* Read output only if new data is available */
-    // Get status
-    lsm6dso32_status_reg_get(&dev_ctx, &reg.status_reg);
+  lsm6dso32_reg_t reg;
+  /* Read output only if new data is available */
+  // Get status
+  lsm6dso32_status_reg_get(&dev_ctx, &reg.status_reg);
 
-    // If accelerometer data available...
-    if (reg.status_reg.xlda) {
+  // If accelerometer data available...
+  if (reg.status_reg.xlda) {
       /* Read acceleration data */
       memset(data_raw_acceleration, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_acceleration_raw_get(&dev_ctx, data_raw_acceleration);
       acceleration_mg[0] = lsm6dso32_from_fs16_to_mg(data_raw_acceleration[0]);
       acceleration_mg[1] = lsm6dso32_from_fs16_to_mg(data_raw_acceleration[1]);
       acceleration_mg[2] = lsm6dso32_from_fs16_to_mg(data_raw_acceleration[2]);
-      snprintf((char *)tx_buffer, sizeof(tx_buffer),
-              "Acceleration [mg]:%4.2f\t%4.2f\t%4.2f\r\n",
-              acceleration_mg[0], acceleration_mg[1], acceleration_mg[2]);
-      tx_com(tx_buffer, strlen((char const *)tx_buffer));
+      out->data_valid = 1;
+  }
+  out->accel_mg[0] = acceleration_mg[0];
+  out->accel_mg[1] = acceleration_mg[1];
+  out->accel_mg[2] = acceleration_mg[2];
 
-      // TODO REMOVE ME
-      SD_writeToOpenedFile(tx_buffer);
-    }
-
-    // If gyro data available...
-    if (reg.status_reg.gda) {
+  // If gyro data available...
+  if (reg.status_reg.gda) {
       /* Read angular rate field data */
       memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate);
       angular_rate_mdps[0] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[0]);
       angular_rate_mdps[1] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[1]);
       angular_rate_mdps[2] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[2]);
-      snprintf((char *)tx_buffer, sizeof(tx_buffer),
-              "Angular rate [mdps]:%4.2f\t%4.2f\t%4.2f\r\n",
-              angular_rate_mdps[0], angular_rate_mdps[1], angular_rate_mdps[2]);
-      tx_com(tx_buffer, strlen((char const *)tx_buffer));
+  }
+  out->gyro_mdps[0] = angular_rate_mdps[0];
+  out->gyro_mdps[1] = angular_rate_mdps[1];
+  out->gyro_mdps[2] = angular_rate_mdps[2];
 
-      // TODO REMOVE ME
-      SD_writeToOpenedFile(tx_buffer);
-    }
-
-    // If temperature data available...
-    if (reg.status_reg.tda) {
+  // If temperature data available...
+  if (reg.status_reg.tda) {
       /* Read temperature data */
       memset(&data_raw_temperature, 0x00, sizeof(int16_t));
       lsm6dso32_temperature_raw_get(&dev_ctx, &data_raw_temperature);
       temperature_degC = lsm6dso32_from_lsb_to_celsius(data_raw_temperature);
-      snprintf((char *)tx_buffer, sizeof(tx_buffer),
-              "Temperature [degC]:%6.2f\r\n", temperature_degC);
-      tx_com(tx_buffer, strlen((char const *)tx_buffer));
+  }
+  out->temperature_degC = temperature_degC;
 
-      // TODO REMOVE ME
-      SD_writeToOpenedFile(tx_buffer);
+  return 0;
+}
+
+/* Read samples and print to UART via myprintf (debug/diagnostic use). */
+uint8_t lsm6_getAndPrintData(void)
+{
+    if (!isInitialized) {
+        myprintf("Cannot read data because device is not initialized.\r\n");
+        return 1;
     }
 
-    // TODO REMOVE THIS
-    SD_closeFile();
+    LSM6DSO_Data_t data;
+    lsm6_readData(&data);
+
+    // TODO perhaps change this to use myprintf function instead if it makes sense to do so
+    snprintf((char *)tx_buffer, sizeof(tx_buffer),
+             "Accel [mg]: %4.2f\t%4.2f\t%4.2f\r\n",
+             data.accel_mg[0], data.accel_mg[1], data.accel_mg[2]);
+    tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+    snprintf((char *)tx_buffer, sizeof(tx_buffer),
+             "Gyro [mdps]: %4.2f\t%4.2f\t%4.2f\r\n",
+             data.gyro_mdps[0], data.gyro_mdps[1], data.gyro_mdps[2]);
+    tx_com(tx_buffer, strlen((char const *)tx_buffer));
+
+    snprintf((char *)tx_buffer, sizeof(tx_buffer),
+             "Temp [degC]: %6.2f\r\n", data.temperature_degC);
+    tx_com(tx_buffer, strlen((char const *)tx_buffer));
 
     return 0;
 }
