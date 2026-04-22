@@ -20,8 +20,8 @@
  *   for completion non-blockingly and populates the internal data cache when done.
  */
 
-#ifndef BME680_SPI_H_
-#define BME680_SPI_H_
+#ifndef BME680_DEVICE_H_
+#define BME680_DEVICE_H_
 
 #include <stdint.h>
 
@@ -58,4 +58,4 @@ uint8_t       bme680_stateMachine(void);                /* Call repeatedly to dr
 uint8_t       bme680_isDataReady(void);
 BME680_Data_t bme680_getData(void);
 
-#endif /* BME680_SPI_H_ */
+#endif /* BME680_DEVICE_H_ */

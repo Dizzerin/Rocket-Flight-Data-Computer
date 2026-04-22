@@ -10,4 +10,4 @@
 ../Core/Src/main.c:473:13:MX_GPIO_Init	48	static
 ../Core/Src/main.c:548:13:LED_Toggle	8	static
 ../Core/Src/main.c:556:6:MPU_Config	24	static
-../Core/Src/main.c:587:6:Error_Handler	4	static,ignoring_inline_asm
+../Core/Src/main.c:587:6:Error_Handler	16	static,ignoring_inline_asm

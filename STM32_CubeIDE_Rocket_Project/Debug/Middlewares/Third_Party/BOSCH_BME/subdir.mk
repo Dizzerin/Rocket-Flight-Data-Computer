@@ -5,23 +5,23 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../FATFS/App/fatfs.c 
+../Middlewares/Third_Party/BOSCH_BME/bme68x.c 
 
 OBJS += \
-./FATFS/App/fatfs.o 
+./Middlewares/Third_Party/BOSCH_BME/bme68x.o 
 
 C_DEPS += \
-./FATFS/App/fatfs.d 
+./Middlewares/Third_Party/BOSCH_BME/bme68x.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
-FATFS/App/%.o FATFS/App/%.su FATFS/App/%.cyclo: ../FATFS/App/%.c FATFS/App/subdir.mk
+Middlewares/Third_Party/BOSCH_BME/%.o Middlewares/Third_Party/BOSCH_BME/%.su Middlewares/Third_Party/BOSCH_BME/%.cyclo: ../Middlewares/Third_Party/BOSCH_BME/%.c Middlewares/Third_Party/BOSCH_BME/subdir.mk
 	arm-none-eabi-gcc "$<" -mcpu=cortex-m7 -std=gnu11 -g -DDEBUG -DUSE_PWR_LDO_SUPPLY -DUSE_HAL_DRIVER -DSTM32H743xx -c -I../FATFS/Target -I../FATFS/App -I../Core/Inc -I../Drivers/STM32H7xx_HAL_Driver/Inc -I../Drivers/STM32H7xx_HAL_Driver/Inc/Legacy -I../Middlewares/Third_Party/FatFs/src -I../Drivers/CMSIS/Device/ST/STM32H7xx/Include -I../Drivers/CMSIS/Include -I"/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso" -I"/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode" -I"/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/Middlewares/Third_Party/BOSCH_BME" -O0 -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -o "$@"
 
-clean: clean-FATFS-2f-App
+clean: clean-Middlewares-2f-Third_Party-2f-BOSCH_BME
 
-clean-FATFS-2f-App:
-	-$(RM) ./FATFS/App/fatfs.cyclo ./FATFS/App/fatfs.d ./FATFS/App/fatfs.o ./FATFS/App/fatfs.su
+clean-Middlewares-2f-Third_Party-2f-BOSCH_BME:
+	-$(RM) ./Middlewares/Third_Party/BOSCH_BME/bme68x.cyclo ./Middlewares/Third_Party/BOSCH_BME/bme68x.d ./Middlewares/Third_Party/BOSCH_BME/bme68x.o ./Middlewares/Third_Party/BOSCH_BME/bme68x.su
 
-.PHONY: clean-FATFS-2f-App
+.PHONY: clean-Middlewares-2f-Third_Party-2f-BOSCH_BME
 

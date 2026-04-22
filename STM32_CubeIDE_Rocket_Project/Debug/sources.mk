@@ -28,6 +28,7 @@ Drivers/STM32H7xx_HAL_Driver/Src \
 FATFS/App \
 FATFS/Target \
 Middlewares/ST/lsm6dso \
+Middlewares/Third_Party/BOSCH_BME \
 Middlewares/Third_Party/FatFs/src \
 Middlewares/Third_Party/FatFs/src/option \
 UserCode \

@@ -28,9 +28,9 @@
  * point. It simply resets its own state.
  */
 
+#include <bme680_device.h>
 #include "DataLogger.h"
 #include "SD_Card.h"
-#include "bme680_spi.h"
 #include "lsm6dso32_device.h"
 #include <stdio.h>
 #include <string.h>

@@ -17,6 +17,7 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+#include <bme680_device.h>
 #include "main.h"
 #include "fatfs.h"
 
@@ -27,7 +28,6 @@
 #include <stdarg.h> //for va_list var arg functions
 #include "lsm6dso32_device.h"
 #include "SD_Card.h"
-#include "bme680_spi.h"
 #include "DataLogger.h"
 #include "Scheduler.h"
 /* USER CODE END Includes */

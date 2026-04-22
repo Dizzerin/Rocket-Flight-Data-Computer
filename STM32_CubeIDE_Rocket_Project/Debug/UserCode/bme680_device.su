@@ -1,0 +1,10 @@
+../UserCode/bme680_device.c:104:29:bme68x_spi_read	40	static
+../UserCode/bme680_device.c:146:29:bme68x_spi_write	32	static
+../UserCode/bme680_device.c:176:13:bme68x_delay_us	16	static
+../UserCode/bme680_device.c:187:13:updateMeasDuration	16	static
+../UserCode/bme680_device.c:212:9:bme680_init	16	static
+../UserCode/bme680_device.c:277:6:bme680_setGasEnabled	16	static
+../UserCode/bme680_device.c:286:6:bme680_triggerMeasurement	8	static
+../UserCode/bme680_device.c:316:9:bme680_stateMachine	56	static
+../UserCode/bme680_device.c:443:9:bme680_isDataReady	4	static
+../UserCode/bme680_device.c:449:15:bme680_getData	24	static

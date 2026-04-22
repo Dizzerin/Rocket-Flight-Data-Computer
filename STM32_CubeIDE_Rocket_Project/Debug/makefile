@@ -12,6 +12,7 @@ RM := rm -rf
 -include UserCode/subdir.mk
 -include Middlewares/Third_Party/FatFs/src/option/subdir.mk
 -include Middlewares/Third_Party/FatFs/src/subdir.mk
+-include Middlewares/Third_Party/BOSCH_BME/subdir.mk
 -include Middlewares/ST/lsm6dso/subdir.mk
 -include FATFS/Target/subdir.mk
 -include FATFS/App/subdir.mk

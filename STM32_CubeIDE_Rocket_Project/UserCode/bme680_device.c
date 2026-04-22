@@ -33,7 +33,7 @@
  *                             Gas heater: 300 C target, 100 ms duration
  */
 
-#include "bme680_spi.h"
+#include <bme680_device.h>
 #include "bme68x.h"              /* Bosch BME68x SensorAPI */
 #include "main.h"                /* BARO2_CS pin defines, myprintf() */
 #include "stm32h7xx_hal.h"

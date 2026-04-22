@@ -1,5 +1,7 @@
-UserCode/DataLogger.o: ../UserCode/DataLogger.c ../UserCode/DataLogger.h \
- ../UserCode/SD_Card.h ../Middlewares/Third_Party/FatFs/src/ff.h \
+UserCode/DataLogger.o: ../UserCode/DataLogger.c \
+ /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h \
+ ../UserCode/DataLogger.h ../UserCode/SD_Card.h \
+ ../Middlewares/Third_Party/FatFs/src/ff.h \
  ../Middlewares/Third_Party/FatFs/src/integer.h ../FATFS/Target/ffconf.h \
  ../Core/Inc/main.h ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h \
  ../Core/Inc/stm32h7xx_hal_conf.h \
@@ -34,8 +36,8 @@ UserCode/DataLogger.o: ../UserCode/DataLogger.c ../UserCode/DataLogger.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_spi_ex.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart_ex.h \
- ../UserCode/bme680_spi.h \
  /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h
+/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h:
 ../UserCode/DataLogger.h:
 ../UserCode/SD_Card.h:
 ../Middlewares/Third_Party/FatFs/src/ff.h:
@@ -75,5 +77,4 @@ UserCode/DataLogger.o: ../UserCode/DataLogger.c ../UserCode/DataLogger.h \
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_spi_ex.h:
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h:
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart_ex.h:
-../UserCode/bme680_spi.h:
 /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h:
