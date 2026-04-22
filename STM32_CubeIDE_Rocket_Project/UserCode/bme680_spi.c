@@ -454,6 +454,7 @@ uint8_t bme680_stateMachine(void)
             /* Only write gas/heater config registers when gasEnabled has changed */
             if (gasEnabled != lastGasEnabledState) {
                 if (gasEnabled) {
+                    // TODO can also check data.heat_stab to see if heater has stabalized
                     /* Heater on, gas conversion enabled, heater profile 0 */
                     spi_write(REG_CTRL_GAS0, 0x00);
                     spi_write(REG_CTRL_GAS1, (1U << 4) | 0x00);
