@@ -1,0 +1,3 @@
+../UserCode/Scheduler.c:15:6:Scheduler_Init	1
+../UserCode/Scheduler.c:20:6:Scheduler_RegisterTask	2
+../UserCode/Scheduler.c:29:6:Scheduler_Run	3

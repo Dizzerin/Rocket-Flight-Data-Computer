@@ -36,6 +36,8 @@
 "./Middlewares/Third_Party/FatFs/src/ff.o"
 "./Middlewares/Third_Party/FatFs/src/ff_gen_drv.o"
 "./Middlewares/Third_Party/FatFs/src/option/syscall.o"
+"./UserCode/DataLogger.o"
 "./UserCode/SD_Card.o"
+"./UserCode/Scheduler.o"
 "./UserCode/bme680_example.o"
 "./UserCode/bme680_spi.o"

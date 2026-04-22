@@ -1,0 +1,3 @@
+../UserCode/DataLogger.c:39:6:DataLogger_Init	8	static
+../UserCode/DataLogger.c:52:6:DataLogger_UpdateBME	40	static
+../UserCode/DataLogger.c:72:6:DataLogger_UpdateIMU	328	static
