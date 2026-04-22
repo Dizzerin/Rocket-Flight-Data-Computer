@@ -1,7 +1,7 @@
 ../UserCode/SD_Card.c:48:6:HAL_GPIO_EXTI_Callback	16	static
 ../UserCode/SD_Card.c:60:16:cardIsPresent	8	static
 ../UserCode/SD_Card.c:70:6:SD_Init	8	static
-../UserCode/SD_Card.c:84:6:SD_Update	8	static
+../UserCode/SD_Card.c:84:6:SD_StateMachine	8	static
 ../UserCode/SD_Card.c:148:12:SD_GetState	4	static
 ../UserCode/SD_Card.c:153:9:SD_IsMounted	4	static
 ../UserCode/SD_Card.c:162:9:SD_FileOpen	24	static

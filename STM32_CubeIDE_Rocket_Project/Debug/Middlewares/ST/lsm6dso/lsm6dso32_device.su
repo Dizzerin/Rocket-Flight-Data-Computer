@@ -1,6 +1,5 @@
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:72:9:lsm6_init	16	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:128:9:lsm6_readData	24	static
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:66:9:lsm6_init	16	static
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:127:9:lsm6_readData	24	static
 ../Middlewares/ST/lsm6dso/lsm6dso32_device.c:179:9:lsm6_getAndPrintData	64	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:217:16:platform_write	24	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:237:16:platform_read	24	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:255:13:tx_com	16	static
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:208:16:platform_write	24	static
+../Middlewares/ST/lsm6dso/lsm6dso32_device.c:228:16:platform_read	24	static
