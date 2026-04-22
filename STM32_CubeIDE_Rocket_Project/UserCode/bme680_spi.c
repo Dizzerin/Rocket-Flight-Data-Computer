@@ -1,29 +1,43 @@
 /*
  * bme680_spi.c
  *
- * BME680 barometer driver implementation.
+ * BME680 barometer driver — wrapper around the Bosch BME68x_SensorAPI v4.4.8.
  * Interface: SPI3 (hspi3), CS = BARO2_CS (PC9).
  *
- * SPI memory page system:
- *   The BME680 uses 7-bit SPI addressing (bit 7 = R/W). The 256-byte register
- *   space is split into two 128-byte pages selected by spi_mem_page (bit 4 of
- *   the status register at SPI address 0x73, accessible from both pages):
- *     Page 0 (spi_mem_page=0, default after power-on): I2C 0x80-0xFF
- *       SPI address sent = I2C_address & 0x7F
- *     Page 1 (spi_mem_page=1): I2C 0x00-0x7F
- *       SPI address sent = I2C_address directly
+ * This file owns:
+ *   - Three platform callbacks required by the Bosch API (SPI read, SPI write,
+ *     and a microsecond delay), which call internal STM32 HAL functions.
+ *   - A non-blocking forced-mode state machine that drives the sensor
+ *
+ * Forced mode overview:
+ *   The BME680 performs one measurement per trigger and returns to sleep.
+ *   bme680_stateMachine() handles the trigger -> wait -> read sequence non-blockingly, with states:
+ *     TRIGGER_PENDING -> configures/triggers forced mode -> WAIT_MEAS
+ *     WAIT_MEAS       -> waits for expected duration, then polls new_data bit
+ *                        -> DATA_READY once the sensor signals completion
+ *     DATA_READY      -> holds results until the next trigger is requested
+ *     ERROR           -> entered on communication failure or measurement timeout
+ *
+ * STM32H7 SPI note:
+ *   The H7 SPI peripheral has a hardware FIFO. Calling HAL_SPI_Transmit then
+ *   HAL_SPI_Receive in sequence (while holding CS low) can leave stale bytes in
+ *   the RX FIFO and corrupt the received data. The read callback here uses
+ *   HAL_SPI_TransmitReceive with a combined tx/rx buffer to avoid this entirely.
  *
  * Measurement config:
  *   Temperature oversampling: x2
- *   Pressure oversampling:    x16 (best altitude resolution ~1.7 cm RMS)
+ *   Pressure oversampling:    x16  (best altitude resolution, ~1.7 cm RMS noise)
  *   Humidity oversampling:    x1
- *   IIR filter:               off (real-time data, no lag)
- *   Gas sensor:               enabled, 300 C target, 100 ms heater wait
+ *   IIR filter:               off  (real-time data, no lag)
+ *   Gas sensor:               off by default; enable with bme680_setGasEnabled(1)
+ *                             Gas heater: 300 C target, 100 ms duration
  */
 
 #include "bme680_spi.h"
-#include "main.h"           /* BARO2_CS pin defines, myprintf() */
+#include "bme68x.h"              /* Bosch BME68x SensorAPI */
+#include "main.h"                /* BARO2_CS pin defines, myprintf() */
 #include "stm32h7xx_hal.h"
+#include <string.h>
 
 /* =========================================================================
  * SPI bus handle
@@ -31,408 +45,273 @@
 extern SPI_HandleTypeDef hspi3;
 
 /* =========================================================================
- * Register definitions
- * All addresses listed are the SPI addresses actually transmitted on the bus.
+ * SPI buffer
+ * The Bosch API's largest single transfer is calibration data (~25 bytes).
+ * Write interleave buffer is at most (2*10)-1 = 19 data bytes + 1 address byte.
+ * 64 bytes gives comfortable headroom.
  * ========================================================================= */
+#define BME680_SPI_BUF_SIZE     64U
 
-/* Page 0 registers (I2C 0x80-0xFF, SPI addr = I2C & 0x7F) */
-#define REG_CHIP_ID         0x50    /* I2C 0xD0, expected value 0x61 */
-#define REG_RESET           0x60    /* I2C 0xE0, write 0xB6 for soft reset */
-#define BME680_CHIP_ID_VAL  0x61
-#define SOFT_RESET_CMD      0xB6
-
-/* Calibration group 1: I2C 0x89-0xA1, SPI Page 0, addr 0x09, 25 bytes */
-#define CALIB1_SPI_ADDR     0x09
-#define CALIB1_LEN          25
-
-/* Calibration group 2: I2C 0xE1-0xEE, SPI Page 0, addr 0x61, 14 bytes */
-#define CALIB2_SPI_ADDR     0x61
-#define CALIB2_LEN          14
-
-/* Page 1 registers (I2C 0x00-0x7F, SPI addr = I2C addr directly) */
-#define REG_RES_HEAT_VAL    0x00    /* Heater resistance calibration (int8_t) */
-#define REG_RES_HEAT_RNG    0x02    /* bits [5:4]: res_heat_range */
-#define REG_RANGE_SW_ERR    0x04    /* bits [7:4]: range switching error (int4) */
-
-#define REG_MEAS_STATUS     0x1D    /* bit7=new_data, bit6=gas_meas, bit5=measuring */
-#define REG_PRESS_MSB       0x1F    /* Start of 15-byte burst: 0x1D-0x2B */
-
-#define REG_RES_HEAT0       0x5A    /* Heater resistance target for profile 0 */
-#define REG_GAS_WAIT0       0x64    /* Heater wait time for profile 0 */
-
-#define REG_CTRL_GAS0       0x70    /* bit3: heat_off */
-#define REG_CTRL_GAS1       0x71    /* bit4: run_gas, bits[3:0]: nb_conv */
-#define REG_CTRL_HUM        0x72    /* bits[2:0]: osrs_h */
-#define REG_STATUS          0x73    /* bit4: spi_mem_page (accessible both pages) */
-#define REG_CTRL_MEAS       0x74    /* bits[7:5]: osrs_t, bits[4:2]: osrs_p, bits[1:0]: mode */
-#define REG_CONFIG          0x75    /* bits[4:2]: filter coefficient */
+static uint8_t spiTxBuf[BME680_SPI_BUF_SIZE];
+static uint8_t spiRxBuf[BME680_SPI_BUF_SIZE];
 
 /* =========================================================================
- * Measurement configuration
+ * Driver configuration
  * ========================================================================= */
-#define OSRS_T              0x02    /* Temperature oversampling x2  (0b010) */
-#define OSRS_P              0x05    /* Pressure oversampling x16    (0b101) */
-#define OSRS_H              0x01    /* Humidity oversampling x1     (0b001) */
-#define FILTER_OFF          0x00    /* IIR filter off               (0b000) */
-#define HEATER_TARGET_DEGC  300     /* Gas heater target temperature */
-/* Gas wait: 25 timer steps x4 multiplier = 100 ms
- * gas_wait register: bits[7:6]=0b01 (x4), bits[5:0]=0b011001 (25) => 0x59 */
-#define GAS_WAIT_VAL        0x59
-#define MEAS_TIMEOUT_MS     3000    /* Measurement timeout (must exceed main loop period) */
-
-/* =========================================================================
- * Calibration data structure
- * ========================================================================= */
-typedef struct {
-    /* Temperature */
-    uint16_t par_t1;
-    int16_t  par_t2;
-    int8_t   par_t3;
-    /* Pressure */
-    uint16_t par_p1;
-    int16_t  par_p2;
-    int8_t   par_p3;
-    int16_t  par_p4;
-    int16_t  par_p5;
-    int8_t   par_p6;
-    int8_t   par_p7;
-    int16_t  par_p8;
-    int16_t  par_p9;
-    uint8_t  par_p10;
-    /* Humidity */
-    uint16_t par_h1;
-    uint16_t par_h2;
-    int8_t   par_h3;
-    int8_t   par_h4;
-    int8_t   par_h5;
-    uint8_t  par_h6;
-    int8_t   par_h7;
-    /* Gas */
-    int8_t   par_g1;
-    int16_t  par_g2;
-    int8_t   par_g3;
-    uint8_t  res_heat_range;
-    int8_t   res_heat_val;
-    int8_t   range_sw_err;
-    /* Intermediate (shared between compensation functions) */
-    float    t_fine;
-} BME680_CalibData_t;
+#define HEATER_TARGET_DEGC      300U    /* Gas heater target temperature */
+#define HEATER_DURATION_MS      100U    /* Gas heater duration in ms */
+#define MEAS_TIMEOUT_MS         3000U   /* Measurement timeout (generous safety margin) */
 
 /* =========================================================================
  * Module state
  * ========================================================================= */
-static BME680_State_t    state        = BME680_STATE_IDLE;
-static BME680_CalibData_t calib;
-static BME680_Data_t     latestData;
-static uint8_t           isInitialized        = 0;
-static uint8_t           gasEnabled           = 0;    /* 0 = gas sensor off (default), 1 = on */
-static uint8_t           lastGasEnabledState = 0xFF; /* 0xFF = uninitialized, forces first write */
-static uint8_t           currentPage   = 0;   /* Tracks active SPI page */
-static uint32_t          measStartTick = 0;
-static float             lastTempC     = 25.0f; /* Ambient temp estimate for heater calc */
+static struct bme68x_dev        boschDev;
+static struct bme68x_conf       boschConf;
+static struct bme68x_heatr_conf boschHeatrConf;
+
+static BME680_State_t  state             = BME680_STATE_IDLE;
+static BME680_Data_t   latestData;
+static uint8_t         isInitialized       = 0;
+static uint8_t         isGasEnabled          = 0;     /* 0 = off (default), 1 = on */
+static uint8_t         lastIsGasEnabledState = 0xFF;  /* 0xFF sentinel forces first gas enable/heater write */
+static uint32_t        measStartTick       = 0;
+static uint32_t        measDurationMs      = 50U;   /* Updated at init and when gas mode changes */
 
 /* =========================================================================
- * Low-level SPI primitives
+ * Platform callbacks for the Bosch BME68x SensorAPI
+ *
+ * The Bosch API manages SPI memory page switching internally via set_mem_page()
+ * before calling these callbacks. These functions only handle raw SPI transfer.
  * ========================================================================= */
 
-static inline void cs_low(void)
+/*
+ * @brief  SPI read callback required by the Bosch API.
+ *
+ * Uses HAL_SPI_TransmitReceive instead of the separate Transmit+Receive pattern.
+ * On STM32H7, the SPI FIFO fills with dummy bytes during a Transmit call; a
+ * subsequent Receive call may read from that stale FIFO instead of fresh data.
+ * TransmitReceive avoids this by combining both phases into one atomic transfer.
+ *
+ * The Bosch API sets bit7 of reg_addr before calling this function (bit7=1
+ * signals a read on the BME680's SPI protocol), so we pass it through unchanged.
+ *
+ * @param reg_addr   Register address (bit7 already set to 1 by the Bosch API)
+ * @param reg_data   Buffer to store the read bytes
+ * @param length     Number of bytes to read
+ * @param intf_ptr   Unused interface pointer
+ * @return           0 on success, non-zero on failure
+ */
+static BME68X_INTF_RET_TYPE bme68x_spi_read(uint8_t reg_addr, uint8_t *reg_data,
+                                              uint32_t length, void *intf_ptr)
 {
+    (void)intf_ptr;
+
+    if (length + 1U > BME680_SPI_BUF_SIZE) {
+        return 1;   /* Requested length exceeds buffer -- should never happen */
+    }
+
+    spiTxBuf[0] = reg_addr;                  /* Address byte (bit7=1 for read, set by Bosch API) */
+    memset(&spiTxBuf[1], 0xFF, length);      /* Dummy bytes to clock in the response */
+
     HAL_GPIO_WritePin(BARO2_CS_GPIO_Port, BARO2_CS_Pin, GPIO_PIN_RESET);
-}
-
-static inline void cs_high(void)
-{
+    HAL_StatusTypeDef halStatus = HAL_SPI_TransmitReceive(&hspi3, spiTxBuf, spiRxBuf,
+                                                           (uint16_t)(length + 1U), 100);
     HAL_GPIO_WritePin(BARO2_CS_GPIO_Port, BARO2_CS_Pin, GPIO_PIN_SET);
+
+    /* spiRxBuf[0] is the garbage byte received while the address was being sent;
+     * actual register data starts at spiRxBuf[1]. */
+    memcpy(reg_data, &spiRxBuf[1], length);
+
+    return (halStatus == HAL_OK) ? BME68X_INTF_RET_SUCCESS : 1;
 }
 
-/* Read len bytes starting at reg (SPI address). Read auto-increments. */
-static void spi_read(uint8_t reg, uint8_t *buf, uint16_t len)
+/*
+ * @brief  SPI write callback required by the Bosch API.
+ *
+ * For multi-register writes the Bosch API pre-interleaves address/data pairs
+ * into its internal buffer and passes:
+ *   reg_addr  = first address byte (bit7 already cleared to 0 for SPI write)
+ *   reg_data  = remaining bytes (may contain further addr/data pairs)
+ *   length    = number of bytes in reg_data
+ *
+ * This function assembles them into one combined buffer and issues a single
+ * HAL_SPI_Transmit call, keeping CS asserted for the entire transaction.
+ *
+ * @param reg_addr   First register address (bit7 cleared to 0 by the Bosch API)
+ * @param reg_data   Data bytes to write (may include interleaved addresses)
+ * @param length     Number of bytes in reg_data
+ * @param intf_ptr   Unused interface pointer
+ * @return           0 on success, non-zero on failure
+ */
+static BME68X_INTF_RET_TYPE bme68x_spi_write(uint8_t reg_addr, const uint8_t *reg_data,
+                                               uint32_t length, void *intf_ptr)
 {
-    reg |= 0x80;    /* bit 7 = 1 signals a read */
-    cs_low();
-    HAL_SPI_Transmit(&hspi3, &reg, 1, 100);
-    HAL_SPI_Receive(&hspi3, buf, len, 100);
-    cs_high();
+    (void)intf_ptr;
+
+    if (length + 1U > BME680_SPI_BUF_SIZE) {
+        return 1;   /* Requested length exceeds buffer -- should never happen */
+    }
+
+    spiTxBuf[0] = reg_addr;              /* First register address (bit7=0 for write) */
+    memcpy(&spiTxBuf[1], reg_data, length);
+
+    HAL_GPIO_WritePin(BARO2_CS_GPIO_Port, BARO2_CS_Pin, GPIO_PIN_RESET);
+    HAL_StatusTypeDef halStatus = HAL_SPI_Transmit(&hspi3, spiTxBuf,
+                                                    (uint16_t)(length + 1U), 100);
+    HAL_GPIO_WritePin(BARO2_CS_GPIO_Port, BARO2_CS_Pin, GPIO_PIN_SET);
+
+    return (halStatus == HAL_OK) ? BME68X_INTF_RET_SUCCESS : 1;
 }
 
-/* Write a single byte to reg (SPI address). Write does NOT auto-increment. */
-static void spi_write(uint8_t reg, uint8_t data)
+/*
+ * @brief  Microsecond delay callback required by the Bosch API.
+ *
+ * HAL_Delay() has 1 ms resolution, so we round up. The delays requested by the
+ * Bosch API (mainly the 10 ms PERIOD_POLL and 10 ms PERIOD_RESET) are not
+ * timing-critical at sub-millisecond granularity for this application.
+ *
+ * @param period_us  Delay duration in microseconds
+ * @param intf_ptr   Unused interface pointer
+ */
+static void bme68x_delay_us(uint32_t period_us, void *intf_ptr)
 {
-    reg &= 0x7F;    /* bit 7 = 0 signals a write */
-    cs_low();
-    HAL_SPI_Transmit(&hspi3, &reg, 1, 100);
-    HAL_SPI_Transmit(&hspi3, &data, 1, 100);
-    cs_high();
-}
-
-/* Switch SPI memory page.
- * The status register (0x73) is accessible from both pages.
- * Writes are ignored for read-only status bits; only bit 4 is R/W. */
-static void set_page(uint8_t page)
-{
-    if (currentPage == page) return;
-    uint8_t status;
-    spi_read(REG_STATUS, &status, 1);
-    if (page == 0)
-        status &= ~(1U << 4);
-    else
-        status |=  (1U << 4);
-    spi_write(REG_STATUS, status);
-    currentPage = page;
-}
-
-/* =========================================================================
- * Compensation formulas
- * (Floating-point implementation from Bosch BME680 datasheet Section 3.5)
- * ========================================================================= */
-
-/* Temperature (°C). Also computes calib.t_fine used by pressure and humidity. */
-static float compensate_temperature(uint32_t adc_temp)
-{
-    float var1 = ((float)adc_temp / 16384.0f) - ((float)calib.par_t1 / 1024.0f);
-    var1 *= (float)calib.par_t2;
-    float var2 = ((float)adc_temp / 131072.0f) - ((float)calib.par_t1 / 8192.0f);
-    var2 = (var2 * var2) * ((float)calib.par_t3 * 16.0f);
-    calib.t_fine = var1 + var2;
-    return calib.t_fine / 5120.0f;
-}
-
-/* Pressure (hPa). Requires t_fine set by compensate_temperature(). */
-static float compensate_pressure(uint32_t adc_pres)
-{
-    float var1 = (calib.t_fine / 2.0f) - 64000.0f;
-    float var2 = var1 * var1 * ((float)calib.par_p6 / 131072.0f);
-    var2 += var1 * (float)calib.par_p5 * 2.0f;
-    var2 = (var2 / 4.0f) + ((float)calib.par_p4 * 65536.0f);
-    var1 = (((float)calib.par_p3 * var1 * var1) / 16384.0f
-            + ((float)calib.par_p2 * var1)) / 524288.0f;
-    var1 = (1.0f + (var1 / 32768.0f)) * (float)calib.par_p1;
-    float pres = 1048576.0f - (float)adc_pres;
-    pres = ((pres - (var2 / 4096.0f)) * 6250.0f) / var1;
-    var1 = ((float)calib.par_p9 * pres * pres) / 2147483648.0f;
-    var2 = pres * ((float)calib.par_p8 / 32768.0f);
-    float var3 = (pres / 256.0f) * (pres / 256.0f) * (pres / 256.0f)
-                 * ((float)calib.par_p10 / 131072.0f);
-    pres += (var1 + var2 + var3 + ((float)calib.par_p7 * 128.0f)) / 16.0f;
-    return pres / 100.0f;   /* Pa -> hPa */
-}
-
-/* Humidity (%RH, clamped 0-100). Requires t_fine set by compensate_temperature(). */
-static float compensate_humidity(uint16_t adc_hum)
-{
-    float temp_scaled = calib.t_fine / 5120.0f;
-    float var1 = (float)adc_hum
-                 - ((float)calib.par_h1 * 16.0f)
-                 - (((float)calib.par_h3 / 2.0f) * temp_scaled);
-    float var2 = var1 * ((float)calib.par_h2 / 262144.0f)
-                 * (1.0f + (((float)calib.par_h4 / 16384.0f) * temp_scaled)
-                    + (((float)calib.par_h5 / 1048576.0f) * temp_scaled * temp_scaled));
-    float var3 = (float)calib.par_h6 / 16384.0f;
-    float var4 = (float)calib.par_h7 / 2097152.0f;
-    float hum  = var2 + ((var3 + (var4 * temp_scaled)) * var2 * var2);
-    if (hum > 100.0f) hum = 100.0f;
-    if (hum <   0.0f) hum = 0.0f;
-    return hum;
-}
-
-/* Gas resistance (Ohms). Uses lookup tables from BME680 datasheet Table 12. */
-static float compensate_gas_resistance(uint16_t adc_gas, uint8_t gas_range)
-{
-    static const float lookup1[16] = {
-        1.0f,     1.0f,     1.0f,     1.0f,
-        1.0f,     0.99f,    1.0f,     0.992f,
-        1.0f,     1.0f,     0.998f,   0.995f,
-        1.0f,     0.99f,    1.0f,     1.0f
-    };
-    static const float lookup2[16] = {
-        8000000.0f,   4000000.0f,   2000000.0f,   1000000.0f,
-        499500.4995f, 248262.1648f, 125000.0f,    63004.03226f,
-        31281.28128f, 15625.0f,     7812.5f,       3906.25f,
-        1953.125f,    976.5625f,    488.28125f,    244.140625f
-    };
-    float var1 = (1340.0f + 5.0f * (float)calib.range_sw_err) * lookup1[gas_range];
-    return var1 * lookup2[gas_range] / ((float)adc_gas - 512.0f + var1);
-}
-
-/* Calculate heater resistance register value for a given target temperature.
- * Uses lastTempC as ambient temperature estimate. */
-static uint8_t calc_res_heat(uint16_t target_temp)
-{
-    float var1 = ((float)calib.par_g1 / 16.0f) + 49.0f;
-    float var2 = (((float)calib.par_g2 / 32768.0f) * 0.0005f) + 0.00235f;
-    float var3 = (float)calib.par_g3 / 1024.0f;
-    float var4 = var1 * (1.0f + (var2 * (float)target_temp));
-    float var5 = var4 + (var3 * lastTempC);
-    return (uint8_t)(3.4f * ((var5 * (4.0f / (4.0f + (float)calib.res_heat_range))
-                               * (1.0f / (1.0f + ((float)calib.res_heat_val * 0.002f))))
-                              - 25.0f));
+    (void)intf_ptr;
+    HAL_Delay((period_us + 999U) / 1000U);  /* Round up to nearest ms */
 }
 
 /* =========================================================================
- * Calibration data read
- * Reads two groups of factory-programmed calibration registers.
- * Group 1: I2C 0x89-0xA1 (Page 0, SPI 0x09), 25 bytes
- * Group 2: I2C 0xE1-0xEE (Page 0, SPI 0x61), 14 bytes
- * Plus three single-byte reads from Page 1.
+ * Internal helper: recalculate expected measurement duration.
+ * bme68x_get_meas_dur() returns microseconds for the T/P/H conversion time.
+ * If gas is enabled, we add the heater duration on top of that.
  * ========================================================================= */
-static void read_calibration(void)
+static void updateMeasDuration(void)
 {
-    uint8_t b[25];
-
-    /* --- Calibration group 1 (Page 0, SPI addr 0x09) --- */
-    set_page(0);
-    spi_read(CALIB1_SPI_ADDR, b, CALIB1_LEN);
-
-    /* b[0]  = I2C 0x89 (unused)
-     * b[1]  = I2C 0x8A = par_t2 LSB
-     * b[2]  = I2C 0x8B = par_t2 MSB
-     * b[3]  = I2C 0x8C = par_t3
-     * b[4]  = I2C 0x8D (unused)
-     * b[5]  = I2C 0x8E = par_p1 LSB
-     * b[6]  = I2C 0x8F = par_p1 MSB
-     * b[7]  = I2C 0x90 = par_p2 LSB
-     * b[8]  = I2C 0x91 = par_p2 MSB
-     * b[9]  = I2C 0x92 = par_p3
-     * b[10] = I2C 0x93 (unused)
-     * b[11] = I2C 0x94 = par_p4 LSB
-     * b[12] = I2C 0x95 = par_p4 MSB
-     * b[13] = I2C 0x96 = par_p5 LSB
-     * b[14] = I2C 0x97 = par_p5 MSB
-     * b[15] = I2C 0x98 = par_p7
-     * b[16] = I2C 0x99 = par_p6
-     * b[17] = I2C 0x9A (unused)
-     * b[18] = I2C 0x9B (unused)
-     * b[19] = I2C 0x9C = par_p8 LSB
-     * b[20] = I2C 0x9D = par_p8 MSB
-     * b[21] = I2C 0x9E = par_p9 LSB
-     * b[22] = I2C 0x9F = par_p9 MSB
-     * b[23] = I2C 0xA0 = par_p10
-     * b[24] = I2C 0xA1 (unused) */
-    calib.par_t2  = (int16_t)((uint16_t)b[2]  << 8 | b[1]);
-    calib.par_t3  = (int8_t)b[3];
-    calib.par_p1  = (uint16_t)b[6]  << 8 | b[5];
-    calib.par_p2  = (int16_t)((uint16_t)b[8]  << 8 | b[7]);
-    calib.par_p3  = (int8_t)b[9];
-    calib.par_p4  = (int16_t)((uint16_t)b[12] << 8 | b[11]);
-    calib.par_p5  = (int16_t)((uint16_t)b[14] << 8 | b[13]);
-    calib.par_p7  = (int8_t)b[15];
-    calib.par_p6  = (int8_t)b[16];
-    calib.par_p8  = (int16_t)((uint16_t)b[20] << 8 | b[19]);
-    calib.par_p9  = (int16_t)((uint16_t)b[22] << 8 | b[21]);
-    calib.par_p10 = b[23];
-
-    /* --- Calibration group 2 (Page 0, SPI addr 0x61) --- */
-    uint8_t b2[14];
-    spi_read(CALIB2_SPI_ADDR, b2, CALIB2_LEN);
-
-    /* b2[0]  = I2C 0xE1 = par_h2 bits [11:4]
-     * b2[1]  = I2C 0xE2 = par_h2 bits [3:0] | par_h1 bits [3:0]
-     * b2[2]  = I2C 0xE3 = par_h1 bits [11:4]
-     * b2[3]  = I2C 0xE4 = par_h3
-     * b2[4]  = I2C 0xE5 = par_h4
-     * b2[5]  = I2C 0xE6 = par_h5
-     * b2[6]  = I2C 0xE7 = par_h6
-     * b2[7]  = I2C 0xE8 = par_h7
-     * b2[8]  = I2C 0xE9 = par_t1 LSB
-     * b2[9]  = I2C 0xEA = par_t1 MSB
-     * b2[10] = I2C 0xEB = par_g2 LSB
-     * b2[11] = I2C 0xEC = par_g2 MSB
-     * b2[12] = I2C 0xED = par_g1
-     * b2[13] = I2C 0xEE = par_g3 */
-    calib.par_h2  = (uint16_t)((uint16_t)b2[0] << 4 | b2[1] >> 4);
-    calib.par_h1  = (uint16_t)((uint16_t)b2[2] << 4 | (b2[1] & 0x0F));
-    calib.par_h3  = (int8_t)b2[3];
-    calib.par_h4  = (int8_t)b2[4];
-    calib.par_h5  = (int8_t)b2[5];
-    calib.par_h6  = b2[6];
-    calib.par_h7  = (int8_t)b2[7];
-    calib.par_t1  = (uint16_t)b2[9] << 8 | b2[8];
-    calib.par_g2  = (int16_t)((uint16_t)b2[11] << 8 | b2[10]);
-    calib.par_g1  = (int8_t)b2[12];
-    calib.par_g3  = (int8_t)b2[13];
-
-    /* --- Page 1: heater calibration bytes --- */
-    set_page(1);
-
-    uint8_t tmp;
-    spi_read(REG_RES_HEAT_VAL, &tmp, 1);
-    calib.res_heat_val = (int8_t)tmp;
-
-    spi_read(REG_RES_HEAT_RNG, &tmp, 1);
-    calib.res_heat_range = (tmp >> 4) & 0x03;   /* bits [5:4] */
-
-    spi_read(REG_RANGE_SW_ERR, &tmp, 1);
-    calib.range_sw_err = (int8_t)((int8_t)(tmp & 0xF0) >> 4);  /* bits [7:4], signed */
+    uint32_t durUs = bme68x_get_meas_dur(BME68X_FORCED_MODE, &boschConf, &boschDev);
+    measDurationMs = (durUs + 999U) / 1000U;    /* T/P/H conversion time, rounded up */
+    if (isGasEnabled) {
+        measDurationMs += HEATER_DURATION_MS;   /* Add gas heater wait time */
+    }
 }
 
 /* =========================================================================
  * Public API
  * ========================================================================= */
 
+/*
+ * @brief  Initialize the BME680 sensor using the Bosch BME68x SensorAPI.
+ *
+ * Populates the bme68x_dev struct with platform callbacks, then calls
+ * bme68x_init() which performs a soft reset, verifies the chip ID (0x61),
+ * and reads all factory calibration coefficients. Then configures oversampling,
+ * filter, and heater settings.
+ *
+ * Must be called after MX_SPI3_Init() and MX_GPIO_Init().
+ *
+ * @return BME680_OK on success, BME680_ERROR on failure.
+ */
 uint8_t bme680_init(void)
 {
-    HAL_Delay(10);      /* Sensor startup time after power-on */
+    HAL_Delay(10);   /* Allow sensor startup after power-on */
 
-    /* Force page 0 (sensor default, but ensure driver tracks it correctly) */
-    currentPage = 0xFF; /* Invalidate so set_page() always writes */
-    set_page(0);
+    /* Populate the Bosch device struct with platform-specific callbacks */
+    boschDev.intf     = BME68X_SPI_INTF;
+    boschDev.intf_ptr = NULL;            /* Not needed; callbacks reference hspi3 directly */
+    boschDev.read     = bme68x_spi_read;
+    boschDev.write    = bme68x_spi_write;
+    boschDev.delay_us = bme68x_delay_us;
+    boschDev.amb_temp = 25;              /* Initial ambient temp estimate for heater calc */
 
-    /* Verify chip identity */
-    uint8_t chip_id = 0;
-    spi_read(REG_CHIP_ID, &chip_id, 1);
-    if (chip_id != BME680_CHIP_ID_VAL) {
-        myprintf("BME680 init FAIL: chip ID 0x%02X (expected 0x%02X)\r\n",
-                 chip_id, BME680_CHIP_ID_VAL);
+    /* bme68x_init() performs: soft reset -> verify chip ID (0x61) -> load calibration */
+    int8_t result = bme68x_init(&boschDev);
+    if (result != BME68X_OK) {
+        myprintf("BME680 init FAIL: Bosch API error %d (chip ID read: 0x%02X)\r\n",
+                 result, boschDev.chip_id);
         state = BME680_STATE_ERROR;
         return BME680_ERROR;
     }
 
-    /* Soft reset - brings all registers to power-on defaults, returns to page 0 */
-    spi_write(REG_RESET, SOFT_RESET_CMD);
-    HAL_Delay(10);
-    currentPage = 0;    /* Reset restores page 0 */
+    /* Sensor measurement configuration */
+    boschConf.os_hum  = BME68X_OS_1X;      /* Humidity oversampling x1 */
+    boschConf.os_temp = BME68X_OS_2X;      /* Temperature oversampling x2 */
+    boschConf.os_pres = BME68X_OS_16X;     /* Pressure oversampling x16 (best altitude res) */
+    boschConf.filter  = BME68X_FILTER_OFF; /* IIR filter off -- real-time data, no lag */
+    boschConf.odr     = BME68X_ODR_NONE;   /* Standby time/Output Data Rate ODR N/A in forced mode */
 
-    /* Read factory calibration data */
-    read_calibration();
+    result = bme68x_set_conf(&boschConf, &boschDev);
+    if (result != BME68X_OK) {
+        myprintf("BME680 init FAIL: bme68x_set_conf error %d\r\n", result);
+        state = BME680_STATE_ERROR;
+        return BME680_ERROR;
+    }
 
-    /* Set IIR filter off (config register on page 1) */
-    set_page(1);
-    spi_write(REG_CONFIG, FILTER_OFF << 2);
+    /* Heater configuration (gas off by default; reconfigured on first trigger if changed) */
+    boschHeatrConf.enable     = BME68X_DISABLE;
+    boschHeatrConf.heatr_temp = HEATER_TARGET_DEGC;
+    boschHeatrConf.heatr_dur  = HEATER_DURATION_MS;
+
+    result = bme68x_set_heatr_conf(BME68X_FORCED_MODE, &boschHeatrConf, &boschDev);
+    if (result != BME68X_OK) {
+        myprintf("BME680 init FAIL: bme68x_set_heatr_conf error %d\r\n", result);
+        state = BME680_STATE_ERROR;
+        return BME680_ERROR;
+    }
+
+    /* Pre-calculate how long a forced-mode measurement will take */
+    updateMeasDuration();
+    lastIsGasEnabledState = isGasEnabled;   /* Sync state so first trigger skips unnecessary reconfig */
 
     isInitialized = 1;
-    state = BME680_STATE_IDLE;
-    myprintf("BME680 init OK (chip ID 0x%02X)\r\n", BME680_CHIP_ID_VAL);
+    state         = BME680_STATE_IDLE;
+    myprintf("BME680 init OK (chip ID 0x%02X, meas duration ~%lu ms)\r\n",
+             boschDev.chip_id, (unsigned long)measDurationMs);
     return BME680_OK;
 }
 
-/* Enable or disable the gas sensor. Takes effect on the next triggered measurement.
- * Disabling saves ~100 ms per measurement and ~12 mA heater current.
- * When disabled, gas_resistance_ohms, gas_valid, and heat_stab in BME680_Data_t
- * will be 0 / invalid. */
-void bme680_setGasEnabled(uint8_t enabled)
+/*
+ * Enable or disable the gas sensor. Takes effect on the next triggered measurement.
+ * Disabling saves ~100 ms per measurement and ~12 mA of heater current.
+ * When disabled, gas_resistance_ohms will be 0 and gas_valid will be 0.
+ *
+ * @param isEnabled  1 to enable gas measurements, 0 to disable (default)
+ */
+void bme680_setGasEnabled(uint8_t isEnabled)
 {
-    gasEnabled = enabled ? 1 : 0;
+    isGasEnabled = isEnabled ? 1U : 0U;
 }
 
-/* Request a new measurement. Safe to call from idle or after data is ready.
- * Ignored if a measurement is already in progress. */
+/*
+ * Request a new forced-mode measurement. Safe to call from IDLE or DATA_READY.
+ * Has no effect if a measurement is already in progress.
+ */
 void bme680_triggerMeasurement(void)
 {
     if (!isInitialized) return;
-    if (state == BME680_STATE_WAIT_MEAS ||
-        state == BME680_STATE_TRIGGER_PENDING) return;
+    if (state == BME680_STATE_WAIT_MEAS || state == BME680_STATE_TRIGGER_PENDING)
+    {
+        myprintf("BME680: Warning! Trigger ignored, measurement already in progress\r\n");
+        return;
+    }
+    
+    // Set state machine state to trigger a new measurement
     state = BME680_STATE_TRIGGER_PENDING;
 }
 
 /*
- * @brief  BME680 measurement state machine. Call repeatedly.
+ * @brief  Non-blocking BME680 measurement state machine. Call repeatedly.
  *
- * Drives the non-blocking measurement pipeline: trigger → wait → read → compensate.
- * Safe to call at any rate greater than required measurement rate; returns immediately if no action is needed.
+ * Drives the forced-mode pipeline without blocking:
+ *   - TRIGGER_PENDING: reconfigures heater if isGasEnabled changed, issues forced
+ *     mode trigger, then transitions to WAIT_MEAS.
+ *   - WAIT_MEAS: returns BUSY immediately until the expected measurement duration
+ *     has elapsed. After that, polls the new_data status bit directly with
+ *     bme68x_get_regs() before calling bme68x_get_data(). This avoids the
+ *     blocking 10 ms retry loop inside bme68x's read_field_data() that would
+ *     fire if we called bme68x_get_data() before data was ready.
+ *   - DATA_READY: returns BME680_OK immediately until next trigger.
  *
- * @return BME680_OK    — idle or data ready (check bme680_isDataReady() for new data)
- *         BME680_BUSY  — measurement in progress
- *         BME680_ERROR — hardware fault or timeout
+ * @return BME680_OK    -- idle or data ready (check bme680_isDataReady())
+ *         BME680_BUSY  -- measurement in progress
+ *         BME680_ERROR -- communication failure or measurement timeout
  */
 uint8_t bme680_stateMachine(void)
 {
@@ -446,33 +325,30 @@ uint8_t bme680_stateMachine(void)
 
         case BME680_STATE_TRIGGER_PENDING:
         {
-            set_page(1);
-
-            /* Humidity oversampling must be written before ctrl_meas */
-            spi_write(REG_CTRL_HUM, OSRS_H & 0x07);
-
-            /* Only write gas/heater config registers when gasEnabled has changed */
-            if (gasEnabled != lastGasEnabledState) {
-                if (gasEnabled) {
-                    // TODO can also check data.heat_stab to see if heater has stabalized
-                    /* Heater on, gas conversion enabled, heater profile 0 */
-                    spi_write(REG_CTRL_GAS0, 0x00);
-                    spi_write(REG_CTRL_GAS1, (1U << 4) | 0x00);
-                    spi_write(REG_GAS_WAIT0, GAS_WAIT_VAL);
-                    spi_write(REG_RES_HEAT0, calc_res_heat(HEATER_TARGET_DEGC));
-                } else {
-                    /* Heater forced off, gas conversion disabled */
-                    spi_write(REG_CTRL_GAS0, (1U << 3));   /* heat_off = 1 */
-                    spi_write(REG_CTRL_GAS1, 0x00);        /* run_gas = 0 */
+            /* Reconfigure heater only when isGasEnabled has changed since last trigger */
+            if (isGasEnabled != lastIsGasEnabledState) {
+                boschHeatrConf.enable = isGasEnabled ? BME68X_ENABLE : BME68X_DISABLE;
+                int8_t result = bme68x_set_heatr_conf(BME68X_FORCED_MODE,
+                                                       &boschHeatrConf, &boschDev);
+                if (result != BME68X_OK) {
+                    myprintf("BME680: set_heatr_conf failed (%d)\r\n", result);
+                    state = BME680_STATE_ERROR;
+                    return BME680_ERROR;
                 }
-                lastGasEnabledState = gasEnabled;
+                updateMeasDuration();
+                lastIsGasEnabledState = isGasEnabled;
             }
 
-            /* Temperature/pressure oversampling + forced mode trigger (single write) */
-            uint8_t ctrl_meas = (uint8_t)(((OSRS_T & 0x07U) << 5)
-                                          | ((OSRS_P & 0x07U) << 2)
-                                          | 0x01U);   /* 0x01 = forced mode */
-            spi_write(REG_CTRL_MEAS, ctrl_meas);
+            /* Issue the forced-mode trigger.
+             * bme68x_set_op_mode() confirms the sensor is in sleep mode first
+             * (it should be, having returned to sleep after the previous forced
+             * measurement), then sets the forced-mode bits. */
+            int8_t result = bme68x_set_op_mode(BME68X_FORCED_MODE, &boschDev);
+            if (result != BME68X_OK) {
+                myprintf("BME680: set_op_mode failed (%d)\r\n", result);
+                state = BME680_STATE_ERROR;
+                return BME680_ERROR;
+            }
 
             measStartTick = HAL_GetTick();
             state = BME680_STATE_WAIT_MEAS;
@@ -481,57 +357,68 @@ uint8_t bme680_stateMachine(void)
 
         case BME680_STATE_WAIT_MEAS:
         {
-            /* Timeout guard */
+            /* Guard against a stuck measurement */
+            // TODO hanlde wrap around case - also just call HAL_GetTick() once and save the value probably rather than calling multiple times
             if ((HAL_GetTick() - measStartTick) > MEAS_TIMEOUT_MS) {
-                myprintf("BME680: measurement timeout\r\n");
+                myprintf("BME680: measurement timeout after %lu ms\r\n",
+                         (unsigned long)MEAS_TIMEOUT_MS);
                 state = BME680_STATE_ERROR;
                 return BME680_ERROR;
             }
 
-            /* Poll new_data_0 flag (bit 7 of meas_status_0 at 0x1D, page 1) */
-            set_page(1);
-            uint8_t meas_status;
-            spi_read(REG_MEAS_STATUS, &meas_status, 1);
-            if (!(meas_status & 0x80)) {
-                return BME680_BUSY;     /* Measurement not yet complete */
+            /* Don't poll the sensor until the expected measurement duration has
+             * elapsed. Avoids redundant SPI traffic and nearly guarantees data
+             * will be ready on the first status check. */
+            // TODO hanlde wrap around case
+            if ((HAL_GetTick() - measStartTick) < measDurationMs) {
+                return BME680_BUSY;
             }
-            // Otherwise new data is ready!
 
-            /* Burst-read all measurement registers 0x1D-0x2B (15 bytes) */
-            uint8_t raw[15];
-            spi_read(REG_MEAS_STATUS, raw, 15);
-            latestData.timestamp_ms     = HAL_GetTick();    // Save timestamp for when this data was read!
+            /* Read just the meas_status byte (BME68X_REG_FIELD0 = 0x1D) to check
+             * the new_data bit. bme68x_get_regs() handles SPI page switching.
+             * We do this separately to avoid the blocking 10 ms retry loop inside
+             * read_field_data() that fires when bme68x_get_data() is called before
+             * data is ready. */
+            uint8_t statusByte = 0;
+            int8_t readResult = bme68x_get_regs(BME68X_REG_FIELD0, &statusByte, 1, &boschDev);
+            if (readResult != BME68X_OK) {
+                myprintf("BME680: status read failed (%d)\r\n", readResult);
+                state = BME680_STATE_ERROR;
+                return BME680_ERROR;
+            }
 
-            /* Parse raw ADC values from burst buffer:
-             * raw[0]       = meas_status_0 (0x1D)
-             * raw[1]       = unused (0x1E)
-             * raw[2..4]    = press_msb/lsb/xlsb (0x1F-0x21), 20-bit
-             * raw[5..7]    = temp_msb/lsb/xlsb (0x22-0x24), 20-bit
-             * raw[8..9]    = hum_msb/lsb (0x25-0x26), 16-bit
-             * raw[10..12]  = unused (0x27-0x29)
-             * raw[13]      = gas_r_msb (0x2A), gas_r[9:2]
-             * raw[14]      = gas_r_lsb (0x2B), gas_r[1:0] | valid | stab | range */
-            uint32_t adc_pres  = ((uint32_t)raw[2] << 12) | ((uint32_t)raw[3] << 4) | (raw[4] >> 4);
-            uint32_t adc_temp  = ((uint32_t)raw[5] << 12) | ((uint32_t)raw[6] << 4) | (raw[7] >> 4);
-            uint16_t adc_hum   = ((uint16_t)raw[8] << 8)  | raw[9];
-            uint16_t adc_gas   = ((uint16_t)raw[13] << 2) | (raw[14] >> 6);
-            uint8_t  gas_range = raw[14] & 0x0F;
-            uint8_t  gas_valid = (raw[14] >> 5) & 0x01;
-            uint8_t  heat_stab = (raw[14] >> 4) & 0x01;
+            if (!(statusByte & BME68X_NEW_DATA_MSK)) {
+                /* Data not ready yet -- check again next tick */
+                return BME680_BUSY;
+            }
 
-            /* Compensate - temperature first (populates calib.t_fine for others) */
-            latestData.temperature_degC = compensate_temperature(adc_temp);
-            latestData.pressure_hPa     = compensate_pressure(adc_pres);
-            latestData.humidity_pctRH   = compensate_humidity(adc_hum);
-            latestData.gas_valid        = gas_valid;
-            latestData.heat_stab        = heat_stab;
-            /* Only compute gas resistance when the hardware confirms a valid reading.
-             * When gas is disabled, gas_valid=0 and the ADC registers hold garbage. */
-            latestData.gas_resistance_ohms = gas_valid
-                                             ? compensate_gas_resistance(adc_gas, gas_range)
-                                             : 0.0f;
+            /* new_data bit is confirmed set. Call bme68x_get_data() now.
+             * read_field_data() will see the bit set on its first register read
+             * and return immediately without any delays. */
+            struct bme68x_data measData;
+            uint8_t numFields = 0;
+            readResult = bme68x_get_data(BME68X_FORCED_MODE, &measData, &numFields, &boschDev);
 
-            lastTempC = latestData.temperature_degC;    /* Update ambient estimate */
+            if (readResult != BME68X_OK || numFields == 0) {
+                myprintf("BME680: get_data failed (result=%d, fields=%u)\r\n",
+                         readResult, numFields);
+                state = BME680_STATE_ERROR;
+                return BME680_ERROR;
+            }
+
+            /* Map Bosch API output to our BME680_Data_t.
+             * Bosch API returns pressure in Pascals; we store hPa (divide by 100). */
+            latestData.temperature_degC    = measData.temperature;
+            latestData.pressure_hPa        = measData.pressure / 100.0f;
+            latestData.humidity_pctRH      = measData.humidity;
+            latestData.gas_valid           = (measData.status & BME68X_GASM_VALID_MSK) ? 1U : 0U;
+            latestData.heat_stab           = (measData.status & BME68X_HEAT_STAB_MSK)  ? 1U : 0U;
+            latestData.gas_resistance_ohms = latestData.gas_valid ? measData.gas_resistance : 0.0f;
+            latestData.timestamp_ms        = HAL_GetTick();
+
+            /* Update the Bosch driver's ambient temperature estimate for
+             * more accurate heater resistance calculations on the next trigger */
+            boschDev.amb_temp = (int8_t)latestData.temperature_degC;
 
             state = BME680_STATE_DATA_READY;
             return BME680_OK;
@@ -548,7 +435,7 @@ uint8_t bme680_stateMachine(void)
 /* Returns 1 if compensated data is available, 0 otherwise. */
 uint8_t bme680_isDataReady(void)
 {
-    return (state == BME680_STATE_DATA_READY) ? 1 : 0;
+    return (state == BME680_STATE_DATA_READY) ? 1U : 0U;
 }
 
 /* Returns the most recently compensated measurement data. */

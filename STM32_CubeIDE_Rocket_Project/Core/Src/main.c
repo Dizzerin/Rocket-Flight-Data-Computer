@@ -587,10 +587,19 @@ void MPU_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  /* Attempt to print a message before disabling interrupts */
+  //myprintf("*** FATAL: Error_Handler called — system halted ***\r\n");
+
   __disable_irq();
+
+  /* Fast-blink the LED so the fault is visible on the hardware.
+     HAL_Delay() requires SysTick, which is interrupt-driven and unavailable
+     after __disable_irq(), so we busy-wait instead.
+     At 64 MHz HSI, ~1,600,000 loop iterations is approximately 100 ms. */
   while (1)
   {
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+      for (volatile uint32_t i = 0; i < 1600000UL; i++);
   }
   /* USER CODE END Error_Handler_Debug */
 }

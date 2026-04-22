@@ -9,6 +9,7 @@ The ones of particular interest that I’m working on right now are the LSM6DSO 
   - `Core/Src/` and `Core/Inc/` — CubeMX-generated code; user edits go inside `/* USER CODE BEGIN/END */` blocks
   - `UserCode/` — additional user-written source files (e.g. SD_Card.c)
   - `Middlewares/ST/lsm6dso/` — LSM6DSO driver (not in `Drivers/`)
+  - `Middlewares/Third_Party/BOSCH_BME/` — Bosch BME68x SensorAPI v4.4.8 (bme68x.c/h/defs.h)
 
 ## SPI Bus Assignments
 
@@ -16,19 +17,19 @@ The ones of particular interest that I’m working on right now are the LSM6DSO 
 |---|---|---|
 | LSM6DSO IMU | `hspi1` | 16-bit data size |
 | SD Card | `hspi2` | 8-bit, used via FATFS; handle aliased as `SD_SPI_HANDLE` in main.h |
-| SPI3 | `hspi3` | 8-bit, purpose TBD (possibly BME680 or camera) |
+| BME680 | `hspi3` | 8-bit, Mode 0 (CPOL=Low, CPHA=1Edge) |
 
 ## CS Pin Mappings (defined in main.h)
 
-| Signal | GPIO | Pin |
-|---|---|---|
-| `LSM6DSO_CS` | GPIOA | GPIO_PIN_3 |
-| `SD_CS` | GPIOB | GPIO_PIN_12 |
-| `BME680_CS` | GPIOA | GPIO_PIN_9 |
-| `CAM_CS` | GPIOD | GPIO_PIN_0 |
-| `SD_CARD_DETECT` | GPIOA | GPIO_PIN_8 |
-| `BUZZER_PIN` | GPIOA | GPIO_PIN_10 |
-| `LED` | GPIOB | GPIO_PIN_3 |
+| Signal | CubeMX name | GPIO | Pin |
+|---|---|---|---|
+| `LSM6DSO_CS` | `LSM6DSO_CS_Pin` | GPIOA | GPIO_PIN_3 |
+| `SD_CS` | `SD_CS_Pin` | GPIOB | GPIO_PIN_12 |
+| `BARO2_CS` | `BARO2_CS_Pin` | GPIOC | GPIO_PIN_9 | for BME680
+| `CAM_CS` | `CAM_CS_Pin` | GPIOD | GPIO_PIN_0 |
+| `SD_CARD_DETECT` | `SD_CARD_DETECT_Pin` | GPIOA | GPIO_PIN_8 |
+| `BUZZER_PIN` | `BUZZER_PIN_Pin` | GPIOA | GPIO_PIN_10 |
+| `LED` | `LED_Pin` | GPIOB | GPIO_PIN_3 |
 
 ## Debug / Logging
 
@@ -42,7 +43,11 @@ All edits to CubeMX-managed files (`main.c`, `main.h`, etc.) must be placed insi
 
 - SD card driver (`UserCode/SD_Card.c`): functional
 - LSM6DSO IMU driver (`Middlewares/ST/lsm6dso/`): functional
-- BME680 barometer driver: not yet written
+- BME680 barometer driver (`UserCode/bme680_spi.c/h`): functional
+  - Wraps the Bosch BME68x SensorAPI v4.4.8 (see `Middlewares/Third_Party/BOSCH_BME/`)
+  - Forced mode, non-blocking state machine
+  - SPI callbacks use `HAL_SPI_TransmitReceive` for STM32H7 FIFO safety
+  - Gas sensor disabled by default (not needed for rocketry)
 
 ## More code generation notes
 I like decently descriptive variable names, i.e. "filePointer" instead of "fp", or "numBytesWritten" instead of just "nbw" or "written".
