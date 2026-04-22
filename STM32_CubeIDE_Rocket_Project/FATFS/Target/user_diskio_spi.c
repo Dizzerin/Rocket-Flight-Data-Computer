@@ -34,10 +34,36 @@ extern SPI_HandleTypeDef SD_SPI_HANDLE;
 
 /* Function prototypes */
 
-//(Note that the _256 is used as a mask to clear the prescalar bits as it provides binary 111 in the correct position)
+// Macros for STM32F series processors
+//   (Note that the _256 is used as a mask to clear the prescalar bits as it provides binary 111 in the correct position)
+//   #define FCLK_SLOW() { MODIFY_REG(SD_SPI_HANDLE.Instance->CR1, SPI_BAUDRATEPRESCALER_256, SPI_BAUDRATEPRESCALER_256); }
+//   #define FCLK_FAST() { MODIFY_REG(SD_SPI_HANDLE.Instance->CR1, SPI_BAUDRATEPRESCALER_256, SPI_BAUDRATEPRESCALER_16); }
+// Macros for our STM32H7 series processor
+/* On STM32H7, the baud-rate prescaler is the MBR[2:0] field in bits [30:28]
+ * of the SPI_CFG1 register.
+ * Reference: STM32H743 Reference Manual RM0433, Section 50.5.10
+ *   "SPI configuration register 1 (SPI_CFG1)", Table 672 — MBR[2:0] at bits
+ *   [30:28] of SPI_CFG1.
+ *   URL: https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743-753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+ *
+ * Additionally, RM0433 Section 50.4.7 "Communication formats" states:
+ *   "MBR[2:0] must not be changed when SPE = 1."
+ * So before any change, one must also clear the SPE bit in CR1 before writing CFG1 and
+ * restore it afterward.
+ */
 // TODO We might need to adust these speeds to be even slower
-#define FCLK_SLOW() { MODIFY_REG(SD_SPI_HANDLE.Instance->CR1, SPI_BAUDRATEPRESCALER_256, SPI_BAUDRATEPRESCALER_256); }	/* Set SCLK = slow, (290KBits/s for us) should be approx 280 KBits/s*/
-#define FCLK_FAST() { MODIFY_REG(SD_SPI_HANDLE.Instance->CR1, SPI_BAUDRATEPRESCALER_256, SPI_BAUDRATEPRESCALER_16); }	/* Set SCLK = fast, (4.6MBits/s for us) should be approx 4.5 MBits/s */
+/* Set SCLK = fast, (4.6MBits/s for us) should be approx 4.5 MBits/s */
+#define FCLK_FAST() do { \
+    CLEAR_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
+    MODIFY_REG(SD_SPI_HANDLE.Instance->CFG1, SPI_CFG1_MBR, SPI_BAUDRATEPRESCALER_16); \
+    SET_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
+} while(0)
+/* Set SCLK = slow, (290KBits/s for us) should be approx 280 KBits/s*/
+#define FCLK_SLOW() do { \
+    CLEAR_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
+    MODIFY_REG(SD_SPI_HANDLE.Instance->CFG1, SPI_CFG1_MBR, SPI_BAUDRATEPRESCALER_256); \
+    SET_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
+} while(0)
 
 #define CS_HIGH()	{HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);}
 #define CS_LOW()	{HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);}
