@@ -6,7 +6,8 @@
 ../UserCode/SD_Card.c:153:9:SD_IsMounted	4	static
 ../UserCode/SD_Card.c:162:9:SD_FileOpen	24	static
 ../UserCode/SD_Card.c:168:9:SD_FileClose	16	static
-../UserCode/SD_Card.c:174:9:SD_FileWrite	32	static
-../UserCode/SD_Card.c:191:9:SD_DirOpen	16	static
-../UserCode/SD_Card.c:198:9:SD_DirRead	16	static
-../UserCode/SD_Card.c:203:9:SD_DirClose	16	static
+../UserCode/SD_Card.c:174:9:SD_FileWrite	24	static
+../UserCode/SD_Card.c:192:9:SD_FileSync	16	static
+../UserCode/SD_Card.c:203:9:SD_DirOpen	16	static
+../UserCode/SD_Card.c:210:9:SD_DirRead	16	static
+../UserCode/SD_Card.c:215:9:SD_DirClose	16	static
