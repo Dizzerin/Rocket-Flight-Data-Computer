@@ -357,9 +357,17 @@ uint8_t bme680_stateMachine(void)
 
         case BME680_STATE_WAIT_MEAS:
         {
+            /* Snapshot the tick counter once for all comparisons in this case.
+             * Unsigned subtraction (now - measStartTick) is inherently wraparound-safe:
+             * modular arithmetic produces the correct elapsed time even when the
+             * 32-bit counter rolls over from 0xFFFFFFFF back to 0. The only
+             * constraint is that the two timestamps are within ~24.8 days of each
+             * other, which is trivially true for a measurement timeout of 3 seconds.
+             */
+            uint32_t now = HAL_GetTick();
+
             /* Guard against a stuck measurement */
-            // TODO hanlde wrap around case - also just call HAL_GetTick() once and save the value probably rather than calling multiple times
-            if ((HAL_GetTick() - measStartTick) > MEAS_TIMEOUT_MS) {
+            if ((now - measStartTick) > MEAS_TIMEOUT_MS) {
                 myprintf("BME680: measurement timeout after %lu ms\r\n",
                          (unsigned long)MEAS_TIMEOUT_MS);
                 state = BME680_STATE_ERROR;
@@ -369,8 +377,7 @@ uint8_t bme680_stateMachine(void)
             /* Don't poll the sensor until the expected measurement duration has
              * elapsed. Avoids redundant SPI traffic and nearly guarantees data
              * will be ready on the first status check. */
-            // TODO hanlde wrap around case
-            if ((HAL_GetTick() - measStartTick) < measDurationMs) {
+            if ((now - measStartTick) < measDurationMs) {
                 return BME680_BUSY;
             }
 
