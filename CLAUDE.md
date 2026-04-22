@@ -47,6 +47,5 @@ All edits to CubeMX-managed files (`main.c`, `main.h`, etc.) must be placed insi
 ## More code generation notes
 I like decently descriptive variable names, i.e. "filePointer" instead of "fp", or "numBytesWritten" instead of just "nbw" or "written".
 I also like booleans to be named starting with "is" or "has" to make it clear they are booleans, especially in c where uint8_t is often used for booleans instead of a clear bool type.
-Use specific uint[X]_t types instead of generic UINT.
 I also like decent commenting, not overboard, but not super minimal either.
 I also like decent function documentation explaining what the function does, its parameters, return values etc.  Sometimes it can be short 1 line, sometimes a full long explanation with @brief, @param, @return etc. tags.  Use your judgement, if the function is simple, obvious and straight forward, don't waste the space, but if its more complex or less clear/obvious what it does, consider being more verbose with its description.

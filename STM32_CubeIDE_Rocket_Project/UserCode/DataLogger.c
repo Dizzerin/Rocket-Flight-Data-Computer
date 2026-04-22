@@ -117,7 +117,7 @@ static FRESULT createLogFile(void)
     }
 
     // Write Header Row
-    uint8_t written;
+    UINT written;
     res = SD_FileWrite(&logFile, CSV_HEADER, strlen(CSV_HEADER), &written);
     if (res != FR_OK || written != strlen(CSV_HEADER)) {
         myprintf("DL: header write failed (%d)\r\n", res);
@@ -167,7 +167,7 @@ static void writeCSVRow(uint32_t timestamp)
                  imu.temperature_degC);
     }
 
-    uint8_t written;
+    UINT written;
     FRESULT res = SD_FileWrite(&logFile, line, strlen(line), &written);
     if (res != FR_OK) {
         myprintf("DL: write failed (%d) — entering error state\r\n", res);

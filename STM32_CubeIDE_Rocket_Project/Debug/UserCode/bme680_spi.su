@@ -12,6 +12,6 @@
 ../UserCode/bme680_spi.c:371:9:bme680_init	16	static
 ../UserCode/bme680_spi.c:411:6:bme680_setGasEnabled	16	static
 ../UserCode/bme680_spi.c:418:6:bme680_triggerMeasurement	4	static
-../UserCode/bme680_spi.c:430:9:bme680_update	40	static
-../UserCode/bme680_spi.c:535:9:bme680_isDataReady	4	static
-../UserCode/bme680_spi.c:541:15:bme680_getData	24	static
+../UserCode/bme680_spi.c:431:9:bme680_update	40	static
+../UserCode/bme680_spi.c:537:9:bme680_isDataReady	4	static
+../UserCode/bme680_spi.c:543:15:bme680_getData	24	static
