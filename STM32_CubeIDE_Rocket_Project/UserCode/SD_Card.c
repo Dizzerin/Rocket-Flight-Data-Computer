@@ -23,8 +23,9 @@
 #include <string.h>
 #include "SD_Card.h"
 #include "fatfs.h"
+#include "user_diskio_spi.h" /* USER_SPI_deinitialize() */
 #include "main.h"           /* SD_CARD_DETECT pin defines, myprintf() */
-#include "stm32h7xx_hal.h"  /* HAL_GPIO_ReadPin */
+#include "stm32h7xx_hal.h"  /* HAL_GPIO_ReadPin, HAL_SPI_Abort */
 
 /* =========================================================================
  * Module state
@@ -61,6 +62,25 @@ static uint8_t cardIsPresent(void)
 {
     return (HAL_GPIO_ReadPin(SD_CARD_DETECT_GPIO_Port, SD_CARD_DETECT_Pin)
             == GPIO_PIN_RESET) ? 1 : 0;
+}
+
+/*
+ * Perform low-level SD card teardown after physical removal.
+ *
+ * Must be called before f_mount(NULL, "", 0) on any removal path. Resets the
+ * low-level SPI driver state so the next f_mount() forces a full disk_initialize()
+ * sequence on re-insertion. Without this, FatFS sees no STA_NOINIT flag and skips
+ * the CMD0/CMD8/ACMD41 init, so the new card is never put into SPI mode.
+ *
+ * Also aborts any in-progress SPI transaction (the HAL SPI state machine can get
+ * stuck in HAL_SPI_STATE_BUSY if the card is yanked mid-transfer), and ensures
+ * CS is deasserted so the next card's 80-dummy-clock init sequence runs correctly.
+ */
+static void sdCardTeardown(void)
+{
+    USER_SPI_deinitialize();   /* Reset Stat = STA_NOINIT, CardType = 0, FCLK_SLOW */
+    HAL_SPI_Abort(&SD_SPI_HANDLE);
+    HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);  /* Deassert CS */
 }
 
 /* =========================================================================
@@ -126,6 +146,7 @@ void SD_StateMachine(void)
                 cardDetectChangedFlag = 0;
                 if (!cardIsPresent()) {
                     myprintf("SD: card removed — unmounting\r\n");
+                    sdCardTeardown();
                     f_mount(NULL, "", 0);
                     state = SD_NOT_PRESENT;
                 }
@@ -137,6 +158,7 @@ void SD_StateMachine(void)
                 cardDetectChangedFlag = 0;
                 if (!cardIsPresent()) {
                     myprintf("SD: card removed (was in error state)\r\n");
+                    sdCardTeardown();
                     f_mount(NULL, "", 0);
                     state = SD_NOT_PRESENT;
                 }

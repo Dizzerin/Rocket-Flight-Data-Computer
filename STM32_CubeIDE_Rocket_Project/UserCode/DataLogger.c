@@ -267,30 +267,44 @@ void DataLogger_StateMachine_Task(void)
     uint32_t   now          = HAL_GetTick();
     SD_State_t currentSdState = SD_GetState();
 
+    // Detect SD Card State transitions and transition this state machine accordingly
     /* --- Edge detection: react to SD card state transitions --- */
     if (currentSdState != prevSdState) {
+        // SD Card Inserted
         if (currentSdState == SD_MOUNTED && dlState == DL_IDLE) {
             /* Card just became mounted — try to open a log file */
             dlState = DL_OPENING;
         }
+
+        // SD Card Removed
         if (currentSdState != SD_MOUNTED && isFileOpen) {
             /* Card removed or error — abandon the file handle.
                Do NOT call SD_FileClose: the filesystem is already gone. */
             isFileOpen = 0;
             dlState    = DL_IDLE;
+
+            // Reset BME cache so stale data is never written when logging resumes.
+            bmeHasReturnedFirstReading = 0;
+            memset(&bmeCache, 0, sizeof(bmeCache));
         }
         prevSdState = currentSdState;
     }
 
-    /* --- BME680 polling (runs every call = every 5 ms) --- */
+    /* --- BME680 state machine (runs every call = every 5 ms) ---
+     * Always drive the state machine so any in-progress measurement completes
+     * cleanly when the card is removed (avoids leaving the BME mid-measurement).
+     * Data is cached whenever it arrives, keeping the cache fresh for logging. */
     bme680_stateMachine();
     if (bme680_isDataReady()) {
         bmeCache = bme680_getData();
         bmeHasReturnedFirstReading = 1;
     }
 
-    /* Trigger a new BME680 measurement every DATALOGGER_BME_TRIGGER_MS (50 ms) */
-    if ((now - bmeLastTrigger) >= DATALOGGER_BME_TRIGGER_MS) {
+    /* Trigger a new BME680 measurement every DATALOGGER_BME_TRIGGER_MS.
+     * Only trigger when actively logging — no point measuring if no file is open. */
+    if (dlState == DL_LOGGING &&
+        (now - bmeLastTrigger) >= DATALOGGER_BME_TRIGGER_MS)
+    {
         bme680_triggerMeasurement();
         bmeLastTrigger = now;
     }

@@ -394,6 +394,33 @@ inline DSTATUS USER_SPI_initialize (
 }
 
 
+/*-----------------------------------------------------------------------*/
+/* De-initialize disk drive (called directly by SD_Card.c, not FatFS)   */
+/*-----------------------------------------------------------------------*/
+
+/*
+ * Resets the low-level SPI driver state so the next f_mount() triggers a full
+ * SD card initialization sequence (CMD0 -> CMD8 -> ACMD41).
+ *
+ * Without this, Stat remains clear of STA_NOINIT after a card is removed, so
+ * FatFS's find_volume() skips disk_initialize() on re-insertion and the card
+ * never goes through the SPI power-on protocol. All subsequent commands fail.
+ *
+ * Also returns the SPI clock to slow speed so the init sequence (which starts
+ * with FCLK_SLOW and dummy clocks) runs at the correct rate on the next
+ * USER_SPI_initialize() call. USER_SPI_initialize() switches to FCLK_FAST on
+ * success.
+ *
+ * This function is NOT registered in the FatFS driver struct — it is called
+ * directly by SD_Card.c as part of the card-removal teardown sequence.
+ */
+void USER_SPI_deinitialize(void)
+{
+    Stat     = STA_NOINIT;
+    CardType = 0;
+    FCLK_SLOW();   /* Return clock to slow speed; USER_SPI_initialize will set FCLK_FAST on success */
+}
+
 
 /*-----------------------------------------------------------------------*/
 /* Get disk status                                                       */

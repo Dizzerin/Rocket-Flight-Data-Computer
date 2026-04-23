@@ -291,6 +291,11 @@ void bme680_triggerMeasurement(void)
         myprintf("BME680: Warning! Trigger ignored, measurement already in progress\r\n");
         return;
     }
+    elif (state == BME680_STATE_ERROR)
+    {
+        myprintf("BME680: Warning! Trigger ignored, sensor in error state\r\n");
+        return;
+    }
     
     // Set state machine state to trigger a new measurement
     state = BME680_STATE_TRIGGER_PENDING;
@@ -381,34 +386,32 @@ uint8_t bme680_stateMachine(void)
                 return BME680_BUSY;
             }
 
-            /* Read just the meas_status byte (BME68X_REG_FIELD0 = 0x1D) to check
-             * the new_data bit. bme68x_get_regs() handles SPI page switching.
-             * We do this separately to avoid the blocking 10 ms retry loop inside
-             * read_field_data() that fires when bme68x_get_data() is called before
-             * data is ready. */
-            uint8_t statusByte = 0;
-            int8_t readResult = bme68x_get_regs(BME68X_REG_FIELD0, &statusByte, 1, &boschDev);
-            if (readResult != BME68X_OK) {
-                myprintf("BME680: status read failed (%d)\r\n", readResult);
-                state = BME680_STATE_ERROR;
-                return BME680_ERROR;
-            }
-
-            if (!(statusByte & BME68X_NEW_DATA_MSK)) {
-                /* Data not ready yet -- check again next tick */
-                return BME680_BUSY;
-            }
-
-            /* new_data bit is confirmed set. Call bme68x_get_data() now.
-             * read_field_data() will see the bit set on its first register read
-             * and return immediately without any delays. */
+            /* Call bme68x_get_data() directly now that measDurationMs has elapsed.
+             * read_field_data() reads the 17-byte field block (starting at
+             * BME68X_REG_FIELD0 = 0x1D) and checks the new_data bit. Since we
+             * waited measDurationMs, the bit should be set on the first read and
+             * read_field_data() returns immediately.
+             *
+             * NOTE: We deliberately do NOT pre-read the status register to check
+             * new_data before calling bme68x_get_data(). Reading register 0x1D
+             * clears the new_data flag in hardware. If we consumed it in a
+             * pre-read, bme68x_get_data()'s internal read_field_data() would see
+             * new_data = 0, trigger its 5-retry × 10 ms blocking loop (50 ms
+             * total), and return BME68X_W_NO_NEW_DATA — the opposite of the
+             * intended non-blocking behavior. */
             struct bme68x_data measData;
             uint8_t numFields = 0;
-            readResult = bme68x_get_data(BME68X_FORCED_MODE, &measData, &numFields, &boschDev);
+            int8_t readResult = bme68x_get_data(BME68X_FORCED_MODE, &measData, &numFields, &boschDev);
 
-            if (readResult != BME68X_OK || numFields == 0) {
-                myprintf("BME680: get_data failed (result=%d, fields=%u)\r\n",
-                         readResult, numFields);
+            if (readResult == BME68X_W_NO_NEW_DATA || numFields == 0) {
+                /* Data not ready yet despite elapsed measDurationMs — timing jitter.
+                 * Stay in WAIT_MEAS and retry on the next tick rather than erroring. */
+                return BME680_BUSY;
+                // TODO implement a max number of retries here and eventually fall out to the error state
+            }
+
+            if (readResult != BME68X_OK) {
+                myprintf("BME680: get_data failed (%d)\r\n", readResult);
                 state = BME680_STATE_ERROR;
                 return BME680_ERROR;
             }

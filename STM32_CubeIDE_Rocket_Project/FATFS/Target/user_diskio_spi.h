@@ -26,6 +26,7 @@
 //we define them as extern because they are defined in a separate .c file to user_diskio.c (which #includes this .h file)
 
 extern DSTATUS USER_SPI_initialize (BYTE pdrv);
+extern void    USER_SPI_deinitialize (void);   /* Manually call yourself on card removal - FATFS will not call this one; resets Stat/CardType and slows SPI clock */
 extern DSTATUS USER_SPI_status (BYTE pdrv);
 extern DRESULT USER_SPI_read (BYTE pdrv, BYTE *buff, DWORD sector, UINT count);
 #if _USE_WRITE == 1
