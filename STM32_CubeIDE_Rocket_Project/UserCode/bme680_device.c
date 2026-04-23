@@ -291,7 +291,7 @@ void bme680_triggerMeasurement(void)
         myprintf("BME680: Warning! Trigger ignored, measurement already in progress\r\n");
         return;
     }
-    elif (state == BME680_STATE_ERROR)
+    else if (state == BME680_STATE_ERROR)
     {
         myprintf("BME680: Warning! Trigger ignored, sensor in error state\r\n");
         return;
