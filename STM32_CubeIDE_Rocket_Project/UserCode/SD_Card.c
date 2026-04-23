@@ -24,7 +24,7 @@
 #include "SD_Card.h"
 #include "fatfs.h"
 #include "user_diskio_spi.h" /* USER_SPI_deinitialize() */
-#include "main.h"           /* SD_CARD_DETECT pin defines, myprintf() */
+#include "main.h"           /* SD_CARD_DETECT pin defines, myprintf()*/
 #include "stm32h7xx_hal.h"  /* HAL_GPIO_ReadPin, HAL_SPI_Abort */
 
 /* =========================================================================
@@ -87,8 +87,6 @@ static uint8_t cardIsPresent(void)
 static void sdCardTeardown(void)
 {
     USER_SPI_deinitialize();   /* Stat = STA_NOINIT, CardType = 0, FCLK_SLOW */
-    HAL_SPI_Abort(&SD_SPI_HANDLE);
-    HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);  /* Deassert CS */
 }
 
 /* =========================================================================
