@@ -316,7 +316,7 @@ void DataLogger_StateMachine_Task(void)
             break;
 
         case DL_LOGGING:
-            // Note with this kind of subtraction the wrap around case is handled correctly as long as the write interval is less than 24.8 days (which it always is in practice)
+            // Note with this kind of subtraction the wrap around case is handled correctly as long as the write interval is less than half a uint32_t ~24.8 days (which it always is in practice)
             if ((now - lastCsvWriteTick) >= DATALOGGER_CSV_WRITE_MS) {
                 lastCsvWriteTick = now;
                 writeCSVRow(now);
