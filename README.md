@@ -71,7 +71,7 @@ Rocket-Flight-Data-Computer/
 |---|---|---|---|
 | Bosch BME68x SensorAPI | v4.4.8 | `Middlewares/Third_Party/BOSCH_BME/` | [github.com/boschsensortec/BME68x_SensorAPI](https://github.com/boschsensortec/BME68x_SensorAPI) |
 | ST LSM6DSO32 driver | (STM32CubeH7) | `Middlewares/ST/lsm6dso/` | [github.com/STMicroelectronics/lsm6dso32-pid](https://github.com/STMicroelectronics/lsm6dso32-pid) |
-| FatFs | R0.14b | `Middlewares/Third_Party/FatFs/` | Bundled by STM32CubeMX (Chan's FatFs) |
+| FatFs | R0.12c | `Middlewares/Third_Party/FatFs/` | Bundled by STM32CubeMX (Chan's FatFs) |
 | STM32 HAL / BSP | STM32CubeH7 | `Drivers/` | Bundled by STM32CubeMX |
 
 > The Bosch BME68x SensorAPI and ST LSM6DSO32 driver files are **not modified**. Custom wrappers (`bme680_device.c/.h` and `lsm6dso32_device.c/.h`) sit on top of them.
