@@ -1,6 +1,5 @@
-Core/Src/main.o: ../Core/Src/main.c \
- /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h \
- ../Core/Inc/main.h ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h \
+Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
+ ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h \
  ../Core/Inc/stm32h7xx_hal_conf.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_rcc.h \
  ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h \
@@ -41,8 +40,8 @@ Core/Src/main.o: ../Core/Src/main.c \
  /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h \
  /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/SD_Card.h \
  /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/DataLogger.h \
- /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/Scheduler.h
-/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h:
+ /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/Scheduler.h \
+ /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h
 ../Core/Inc/main.h:
 ../Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h:
 ../Core/Inc/stm32h7xx_hal_conf.h:
@@ -89,3 +88,4 @@ Core/Src/main.o: ../Core/Src/main.c \
 /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/SD_Card.h:
 /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/DataLogger.h:
 /home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/Scheduler.h:
+/home/caleb/Documents/Work/Wyzant_Tutoring/Nicholas_Chang_PCB/Rocket-Flight-Data-Computer/STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h:
