@@ -337,7 +337,7 @@ DataLogger: opened LOG_0005.CSV
 | SD Card | `hspi2` | 8-bit | ~250 kHz (init) → ~25 MHz | Mode 0 | |
 | BME680 | `hspi3` | 8-bit | ~4 MHz (64 MHz / 16) | Mode 0 (CPOL=Low, CPHA=1Edge) | |
 
-### CS Pin Mappings
+### Primary Pin Mappings
 
 | Signal | CubeMX Name | GPIO | Pin | Active |
 |---|---|---|---|---|
@@ -346,6 +346,13 @@ DataLogger: opened LOG_0005.CSV
 | BME680 chip select | `BARO2_CS_Pin` | GPIOC | PC9 | Low |
 | SD card detect | `SD_CARD_DETECT_Pin` | GPIOA | PA8 | Low (card present) |
 | LED | `LED_Pin` | GPIOB | PB3 | High |
-| Buzzer | `BUZZER_PIN_Pin` | GPIOA | PA10 | — |
 
 > All CS pins are configured as push-pull GPIO outputs. CS lines are driven by user code (not by the SPI peripheral hardware NSS). The SD card detect pin uses a hardware pull-up on the PCB and is connected to an EXTI line for interrupt-driven hot-plug detection.
+
+#### UART3 Serial Debug Pins
+| PCB Pin | PCB Signal | Connect To |
+|---|---|---|
+| PB10 | UART3 TX (PCB transmits here) | **RX** on USB bridge |
+| PB11 | UART3 RX (PCB receives here) | **TX** on USB bridge |
+| GND | Ground | **GND** on USB bridge |
+| 3.3 V | Power reference | **3.3 V** (VCC) on USB bridge |
