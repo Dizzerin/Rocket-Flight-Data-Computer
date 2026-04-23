@@ -43,7 +43,7 @@ All edits to CubeMX-managed files (`main.c`, `main.h`, etc.) must be placed insi
 
 - SD card driver (`UserCode/SD_Card.c`): functional
 - LSM6DSO IMU driver (`Middlewares/ST/lsm6dso/`): functional
-- BME680 barometer driver (`UserCode/bme680_spi.c/h`): functional
+- BME680 barometer driver (`UserCode/bme680_device.c/h`): functional
   - Wraps the Bosch BME68x SensorAPI v4.4.8 (see `Middlewares/Third_Party/BOSCH_BME/`)
   - Forced mode, non-blocking state machine
   - SPI callbacks use `HAL_SPI_TransmitReceive` for STM32H7 FIFO safety
