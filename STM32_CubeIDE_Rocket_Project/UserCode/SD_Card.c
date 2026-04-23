@@ -87,6 +87,7 @@ static uint8_t cardIsPresent(void)
 static void sdCardTeardown(void)
 {
     USER_SPI_deinitialize();   /* Stat = STA_NOINIT, CardType = 0, FCLK_SLOW */
+    f_mount(NULL, "", 0);
 }
 
 /* =========================================================================
@@ -153,7 +154,6 @@ void SD_StateMachine(void)
                 if (!cardIsPresent()) {
                     myprintf("SD: card removed — unmounting\r\n");
                     sdCardTeardown();
-                    f_mount(NULL, "", 0);
                     state = SD_NOT_PRESENT;
                 }
             }
@@ -165,7 +165,6 @@ void SD_StateMachine(void)
                 if (!cardIsPresent()) {
                     myprintf("SD: card removed (was in error state)\r\n");
                     sdCardTeardown();
-                    f_mount(NULL, "", 0);
                     state = SD_NOT_PRESENT;
                 }
             }

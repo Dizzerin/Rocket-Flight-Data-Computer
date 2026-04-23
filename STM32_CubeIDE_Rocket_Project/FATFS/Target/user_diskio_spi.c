@@ -438,11 +438,11 @@ inline DSTATUS USER_SPI_initialize (
  */
 void USER_SPI_deinitialize(void)
 {
+    CS_HIGH();
+    HAL_SPI_Abort(&SD_SPI_HANDLE);
     Stat     = STA_NOINIT;
     CardType = 0;
     FCLK_SLOW();   /* USER_SPI_initialize() will call FCLK_FAST() on successful re-init */
-    HAL_SPI_Abort(&SD_SPI_HANDLE);
-    CS_HIGH();
 }
 
 
