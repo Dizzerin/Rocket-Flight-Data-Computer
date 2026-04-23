@@ -5,6 +5,6 @@
 ../UserCode/bme680_device.c:212:9:bme680_init	16	static
 ../UserCode/bme680_device.c:277:6:bme680_setGasEnabled	16	static
 ../UserCode/bme680_device.c:286:6:bme680_triggerMeasurement	8	static
-../UserCode/bme680_device.c:316:9:bme680_stateMachine	56	static
-../UserCode/bme680_device.c:443:9:bme680_isDataReady	4	static
-../UserCode/bme680_device.c:449:15:bme680_getData	24	static
+../UserCode/bme680_device.c:321:9:bme680_stateMachine	56	static
+../UserCode/bme680_device.c:446:9:bme680_isDataReady	4	static
+../UserCode/bme680_device.c:452:15:bme680_getData	24	static

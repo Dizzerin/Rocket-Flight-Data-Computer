@@ -9,8 +9,9 @@
 ../FATFS/Target/user_diskio_spi.c:230:5:rcvr_datablock	4
 ../FATFS/Target/user_diskio_spi.c:259:5:xmit_datablock	4
 ../FATFS/Target/user_diskio_spi.c:287:6:send_cmd	10
-../FATFS/Target/user_diskio_spi.c:346:16:USER_SPI_initialize	21
-../FATFS/Target/user_diskio_spi.c:402:16:USER_SPI_status	2
-../FATFS/Target/user_diskio_spi.c:417:16:USER_SPI_read	11
-../FATFS/Target/user_diskio_spi.c:456:16:USER_SPI_write	14
-../FATFS/Target/user_diskio_spi.c:497:16:USER_SPI_ioctl	27
+../FATFS/Target/user_diskio_spi.c:362:16:USER_SPI_initialize	21
+../FATFS/Target/user_diskio_spi.c:439:6:USER_SPI_deinitialize	1
+../FATFS/Target/user_diskio_spi.c:453:16:USER_SPI_status	2
+../FATFS/Target/user_diskio_spi.c:468:16:USER_SPI_read	11
+../FATFS/Target/user_diskio_spi.c:507:16:USER_SPI_write	14
+../FATFS/Target/user_diskio_spi.c:548:16:USER_SPI_ioctl	27
