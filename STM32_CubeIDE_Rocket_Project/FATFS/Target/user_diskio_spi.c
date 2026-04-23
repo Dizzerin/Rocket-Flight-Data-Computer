@@ -343,6 +343,22 @@ BYTE send_cmd (		/* Return value: R1 resp (bit7==1:Failed to send) */
 /* Initialize disk drive                                                 */
 /*-----------------------------------------------------------------------*/
 
+/*
+ * Called automatically by FatFS (via disk_initialize -> USER_initialize) whenever
+ * f_mount() is called with the forced-mount option and Stat has STA_NOINIT set.
+ *
+ * Re-initialization flow after card removal/re-insertion:
+ *   1. Card removed  -> SD_Card.c calls sdCardTeardown()
+ *                    -> USER_SPI_deinitialize() sets Stat = STA_NOINIT, FCLK_SLOW()
+ *   2. Card inserted -> SD_Card.c calls f_mount(&fatFs, "", 1) (forced mount)
+ *                    -> FatFS calls disk_initialize() because STA_NOINIT is set
+ *                    -> disk_initialize() calls USER_initialize() -> USER_SPI_initialize()
+ *   3. This function runs the full SPI power-on protocol (dummy clocks, CMD0/CMD8/ACMD41)
+ *   4. On success: FCLK_FAST() is called here (line below) and STA_NOINIT is cleared
+ *
+ * This is the same path taken on first boot — the deinit/reinit cycle is identical
+ * to a cold start from FatFS's perspective.
+ */
 inline DSTATUS USER_SPI_initialize (
 	BYTE drv		/* Physical drive number (0) */
 )
@@ -399,26 +415,32 @@ inline DSTATUS USER_SPI_initialize (
 /*-----------------------------------------------------------------------*/
 
 /*
- * Resets the low-level SPI driver state so the next f_mount() triggers a full
- * SD card initialization sequence (CMD0 -> CMD8 -> ACMD41).
+ * Resets the low-level SPI driver state on SD card removal.
  *
- * Without this, Stat remains clear of STA_NOINIT after a card is removed, so
- * FatFS's find_volume() skips disk_initialize() on re-insertion and the card
- * never goes through the SPI power-on protocol. All subsequent commands fail.
+ * This is NOT called by FatFS — it must be called directly by SD_Card.c before
+ * f_mount(NULL, "", 0) on every card-removal path.
  *
- * Also returns the SPI clock to slow speed so the init sequence (which starts
- * with FCLK_SLOW and dummy clocks) runs at the correct rate on the next
- * USER_SPI_initialize() call. USER_SPI_initialize() switches to FCLK_FAST on
- * success.
+ * Why STA_NOINIT must be set:
+ *   FatFS's find_volume() calls disk_status() to decide whether to call
+ *   disk_initialize(). If Stat does not have STA_NOINIT set, FatFS assumes the
+ *   drive is already initialized and skips disk_initialize() entirely. The newly
+ *   inserted card has never seen the SPI power-on sequence (80 dummy clocks,
+ *   CMD0, CMD8, ACMD41), so all subsequent commands fail silently. Setting
+ *   STA_NOINIT here ensures the next f_mount() forces a full disk_initialize()
+ *   call, which routes to USER_SPI_initialize() and runs the full init sequence.
  *
- * This function is NOT registered in the FatFS driver struct — it is called
- * directly by SD_Card.c as part of the card-removal teardown sequence.
+ * Why FCLK_SLOW is called here:
+ *   USER_SPI_initialize() starts with FCLK_SLOW() before sending dummy clocks —
+ *   the SD SPI protocol requires slow clock during init. FCLK_FAST() is called
+ *   by USER_SPI_initialize() at the end of a successful init. Resetting to slow
+ *   here ensures the clock is in the correct state if anything touches the SPI
+ *   bus before the next init, and keeps the deinit/reinit cycle symmetric.
  */
 void USER_SPI_deinitialize(void)
 {
     Stat     = STA_NOINIT;
     CardType = 0;
-    FCLK_SLOW();   /* Return clock to slow speed; USER_SPI_initialize will set FCLK_FAST on success */
+    FCLK_SLOW();   /* USER_SPI_initialize() will call FCLK_FAST() on successful re-init */
 }
 
 

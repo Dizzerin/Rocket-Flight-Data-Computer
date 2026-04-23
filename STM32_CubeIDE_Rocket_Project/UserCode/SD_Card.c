@@ -67,18 +67,26 @@ static uint8_t cardIsPresent(void)
 /*
  * Perform low-level SD card teardown after physical removal.
  *
- * Must be called before f_mount(NULL, "", 0) on any removal path. Resets the
- * low-level SPI driver state so the next f_mount() forces a full disk_initialize()
- * sequence on re-insertion. Without this, FatFS sees no STA_NOINIT flag and skips
- * the CMD0/CMD8/ACMD41 init, so the new card is never put into SPI mode.
+ * Call this before f_mount(NULL, "", 0) on every removal path.
  *
- * Also aborts any in-progress SPI transaction (the HAL SPI state machine can get
- * stuck in HAL_SPI_STATE_BUSY if the card is yanked mid-transfer), and ensures
- * CS is deasserted so the next card's 80-dummy-clock init sequence runs correctly.
+ * Re-initialization flow this enables:
+ *   sdCardTeardown()                 -- sets Stat = STA_NOINIT, FCLK_SLOW, aborts SPI, deasserts CS
+ *   f_mount(NULL, "", 0)             -- unregisters the FatFS object (the filesystem is already gone)
+ *   ... card re-inserted, settle wait ...
+ *   f_mount(&fatFs, "", 1)           -- forced mount; FatFS sees STA_NOINIT and calls disk_initialize()
+ *   disk_initialize() -> USER_SPI_initialize()
+ *                                    -- runs 80 dummy clocks, CMD0, CMD8, ACMD41
+ *                                    -- on success: FCLK_FAST() and STA_NOINIT cleared
+ *
+ * Without the STA_NOINIT reset, FatFS's find_volume() would see the drive as already
+ * initialized and skip disk_initialize() entirely, so the new card never enters SPI mode.
+ *
+ * HAL_SPI_Abort clears any stuck HAL_SPI_STATE_BUSY left by a mid-transfer yank.
+ * CS is explicitly deasserted because the 80-dummy-clock init sequence must run with CS high.
  */
 static void sdCardTeardown(void)
 {
-    USER_SPI_deinitialize();   /* Reset Stat = STA_NOINIT, CardType = 0, FCLK_SLOW */
+    USER_SPI_deinitialize();   /* Stat = STA_NOINIT, CardType = 0, FCLK_SLOW */
     HAL_SPI_Abort(&SD_SPI_HANDLE);
     HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);  /* Deassert CS */
 }
