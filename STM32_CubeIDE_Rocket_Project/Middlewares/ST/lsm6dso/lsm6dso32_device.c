@@ -43,6 +43,18 @@
 extern SPI_HandleTypeDef hspi1;
 #define SENSOR_BUS hspi1
 
+// Local TX buffer for doing TX/RX transactions with the LSM6DSO. 
+// Must be at least 1 byte larger than the max number of bytes we 
+// want to read/write in a single transaction, to accomodate the 
+// address byte.
+// This buffer is used in the platform_read() function so we can 
+// do a single TransmitReceive transaction, which is necessary 
+// on STM32H7 to avoid reading stale data from the SPI FIFO.
+// The largest data transaction we do is 6 data bytes (accel or gyro x/y/z), 
+// so 7 bytes is sufficient for the address + data, 16 just gives plenty 
+// of extra room for safety.
+#define LSM6DSO_SPI_BUF_SIZE 16
+
 /* Private macro -------------------------------------------------------------*/
 #define    BOOT_TIME              10
 
@@ -214,10 +226,9 @@ uint8_t lsm6_getAndPrintData(void)
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
                               uint16_t len)
 {
-  if (len + 1U > LSM6DSO_SPI_BUF_SIZE) return 1;  // Buffer overflow
-
   // // Copy the register address and data into a single SPI transmit buffer so we can send it all in one transaction
   // // This is not required though, we can do it in two seprate ones if we want.
+  // if (len + 1U > 16 ) return 1;  // Buffer overflow
   // uint8_t spiTxBuf[16];
   // spiTxBuf[0] = reg;                       /* Address byte (bit7=0 for write) */
   // memcpy(&spiTxBuf[1], bufp, len);
@@ -256,15 +267,17 @@ static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
  * @param  reg     Register address to read (bit7 will be forced to 1 for read)
  * @param  bufp    Pointer to the buffer to store the read bytes
  * @param  len     Number of consecutive registers to read
- * @return 0 on success, non-zero on HAL error
+ * @return 0 on success, non-zero on HAL error or if len exceeds local buffer size
  */
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
                              uint16_t len)
 {
+  // Use local buffers for the SPI transaction since the caller's buffer is not suitable for a TransmitReceive operation (won't expect first byte sent to be reg and first byte back to be dummy data)
   if (len + 1U > LSM6DSO_SPI_BUF_SIZE) return 1;  // Buffer overflow
+  uint8_t spiRxBuf[LSM6DSO_SPI_BUF_SIZE];
+  uint8_t spiTxBuf[LSM6DSO_SPI_BUF_SIZE];
 
-  // Use internal buffers for the SPI transaction since the caller's buffer may not be suitable for a TransmitReceive operation
-  uint8_t spiRxBuf[16];
+  // Copy the register address and dummy bytes into the SPI transmit buffer. The LSM6DSO32 expects the first byte to be the register address with bit7=1 for reads, followed by dummy bytes to clock out the response.
   spiTxBuf[0] = reg | 0x80;               /* Address byte (bit7=1 for read) */
   memset(&spiTxBuf[1], 0xFF, len);        /* Dummy bytes to clock in the response */
 
