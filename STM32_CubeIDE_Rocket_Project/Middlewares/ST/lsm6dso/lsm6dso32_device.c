@@ -197,43 +197,87 @@ uint8_t lsm6_getAndPrintData(void)
 }
 
 /*
- * @brief  Write generic device register (platform dependent)
+ * @brief  Write generic device register (platform dependent).
  *
- * @param  handle    customizable argument. In this examples is used in
- *                   order to select the correct sensor bus handler.
- * @param  reg       register to write
- * @param  bufp      pointer to data to write in register reg
- * @param  len       number of consecutive register to write
+ * Assembles the register address and data into a single contiguous buffer and
+ * issues one HAL_SPI_Transmit call, keeping CS asserted for the entire
+ * transaction. This matches the LSM6DSO32 SPI write protocol (datasheet §5.1.2):
+ * 8-bit address byte (bit7=0 for write, bits[6:0] = register address) followed
+ * by one or more 8-bit data bytes.
  *
+ * @param  handle  customizable argument, in this use case it is the SPI bus handle (SPI_HandleTypeDef *)
+ * @param  reg     Register address to write (bit7 must be 0; caller's responsibility)
+ * @param  bufp    pointer to data bytes to write in register reg
+ * @param  len     Number of consecutive registers to write
+ * @return 0 on success, non-zero on HAL error
  */
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp,
                               uint16_t len)
 {
+  if (len + 1U > LSM6DSO_SPI_BUF_SIZE) return 1;  // Buffer overflow
+
+  // // Copy the register address and data into a single SPI transmit buffer so we can send it all in one transaction
+  // // This is not required though, we can do it in two seprate ones if we want.
+  // uint8_t spiTxBuf[16];
+  // spiTxBuf[0] = reg;                       /* Address byte (bit7=0 for write) */
+  // memcpy(&spiTxBuf[1], bufp, len);
+  // // Send the Data
+  // HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_RESET);
+  // HAL_StatusTypeDef halStatus = HAL_SPI_Transmit(handle, spiTxBuf, (uint16_t)(len + 1U), 1000); // +1 for the address byte
+  // HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_SET);
+
+  // Simpler method, saves memcpy overhead and buffer allocation
   HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_RESET);
-  HAL_SPI_Transmit(handle, &reg, 1, 1000);
-  HAL_SPI_Transmit(handle, (uint8_t*) bufp, len, 1000);
+  HAL_StatusTypeDef halStatus = HAL_SPI_Transmit(handle, &reg, 1, 1000);
+  if (halStatus != HAL_OK) {
+      HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_SET);
+      return 1;
+  }
+  halStatus = HAL_SPI_Transmit(handle, (uint8_t*) bufp, len, 1000);
   HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_SET);
-  return 0;
+
+  return (halStatus == HAL_OK) ? 0 : 1;
 }
 
 /*
- * @brief  Read generic device register (platform dependent)
+ * @brief  Read generic device register (platform dependent).
  *
- * @param  handle    customizable argument. In this examples is used in
- *                   order to select the correct sensor bus handler.
- * @param  reg       register to read
- * @param  bufp      pointer to buffer that store the data read
- * @param  len       number of consecutive register to read
+ * Uses HAL_SPI_TransmitReceive instead of the separate Transmit+Receive pattern.
+ * On STM32H7, the SPI FIFO fills with stale dummy bytes during a Transmit call 
+ * (since it is full duplex it is recieving data at the same time);
+ * a subsequent Receive call may read from that stale FIFO instead of fresh sensor
+ * data. TransmitReceive avoids this by combining both phases into one atomic transfer.
  *
+ * TX buffer layout: [reg|0x80, 0xFF, 0xFF, ...] (address + dummy bytes)
+ * RX buffer layout: [garbage, data[0], data[1], ...] (garbage while address sent)
+ * Actual register data starts at spiRxBuf[1].
+ *
+ * @param  handle  Customizable argument, in this use case it is the SPI bus handle (SPI_HandleTypeDef *)
+ * @param  reg     Register address to read (bit7 will be forced to 1 for read)
+ * @param  bufp    Pointer to the buffer to store the read bytes
+ * @param  len     Number of consecutive registers to read
+ * @return 0 on success, non-zero on HAL error
  */
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp,
                              uint16_t len)
 {
-  reg |= 0x80; // Mask off highest bit, ensure it is a 1
+  if (len + 1U > LSM6DSO_SPI_BUF_SIZE) return 1;  // Buffer overflow
+
+  // Use internal buffers for the SPI transaction since the caller's buffer may not be suitable for a TransmitReceive operation
+  uint8_t spiRxBuf[16];
+  spiTxBuf[0] = reg | 0x80;               /* Address byte (bit7=1 for read) */
+  memset(&spiTxBuf[1], 0xFF, len);        /* Dummy bytes to clock in the response */
+
   HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_RESET);
-  HAL_SPI_Transmit(handle, &reg, 1, 1000);
-  HAL_SPI_Receive(handle, bufp, len, 1000);
+  HAL_StatusTypeDef halStatus = HAL_SPI_TransmitReceive(handle, spiTxBuf, spiRxBuf,
+                                                        (uint16_t)(len + 1U), 1000); // +1 for the address byte
   HAL_GPIO_WritePin(LSM6DSO_CS_GPIO_Port, LSM6DSO_CS_Pin, GPIO_PIN_SET);
-  return 0;
+
+  // Copy the data back out to the caller's buffer
+  /* spiRxBuf[0] is the garbage byte received while the address was being sent;
+   * actual register data starts at spiRxBuf[1]. */
+  memcpy(bufp, &spiRxBuf[1], len);
+
+  return (halStatus == HAL_OK) ? 0 : 1;
 }
 
