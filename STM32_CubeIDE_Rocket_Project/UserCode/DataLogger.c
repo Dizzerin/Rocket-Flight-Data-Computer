@@ -151,7 +151,7 @@ static FRESULT createLogFile(void)
 static void writeCSVRow(uint32_t writeTimestamp)
 {
     LSM6DSO_Data_t imu;
-    if (!lsm6_readData(&imu)) {
+    if (lsm6_readData(&imu)) {
         myprintf("DL: failed to read IMU data. Is it initialized?\r\n");
     }
 
