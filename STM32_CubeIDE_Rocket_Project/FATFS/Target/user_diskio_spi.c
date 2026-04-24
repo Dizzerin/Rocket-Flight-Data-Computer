@@ -466,7 +466,9 @@ void USER_SPI_deinitialize(void)
 
     Stat     = STA_NOINIT;
     CardType = 0;
-    fclk_slow();   /* USER_SPI_initialize() will call fclk_fast() on successful re-init */
+	
+	// TODO this may not be necessary since the next USER_SPI_initialize() will call fclk_slow() again, and the HAL_SPI_Init() may also set it to slow again... -- test card re-instertion with this commented out
+    // fclk_slow();   /* USER_SPI_initialize() will call fclk_fast() on successful re-init */
 }
 
 
