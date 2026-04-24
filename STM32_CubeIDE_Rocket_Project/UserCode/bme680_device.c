@@ -288,7 +288,14 @@ void bme680_triggerMeasurement(void)
     if (!isInitialized) return;
     if (state == BME680_STATE_WAIT_MEAS || state == BME680_STATE_TRIGGER_PENDING)
     {
-        myprintf("BME680: Warning! Trigger ignored, measurement already in progress\r\n");
+        // Note: This may be triggered from time to time during normal operation if:
+        //  - A BME680 measurement takes longer than expected
+        //  - We wait too long in the BME680 state machine (since we round up 
+        //   the measurement duration) - we do this because if we don't wait 
+        //   long enough and poll the sensor too early, we can trigger the 
+        //   Bosch API's internal blocking retry loop of 10ms (up to 5 times),
+        //   so triggering this on occasion is still better/less total delay. 
+        myprintf("BME680: Note, trigger ignored, measurement already in progress\r\n");
         return;
     }
     else if (state == BME680_STATE_ERROR)
