@@ -6,6 +6,7 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 
 ## Table of Contents
 
+0. [Future Improvements and Known Bugs](#future-improvements-and-known-bugs)
 1. [Hardware Overview](#hardware-overview)
 2. [Project Structure](#project-structure)
 3. [Third-Party Libraries](#third-party-libraries)
@@ -18,6 +19,17 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 10. [SPI Bus & Pin Assignments](#spi-bus--pin-assignments)
 
 ---
+
+## Future Improvements and Known Bugs
+
+**Known Bugs**
+- TODO sometimes it will fail to mount the first time or in general, this is because SD cards in SPI mode are very sensitive to clocking etc.  Before launch we should have a way of verifying that the SD card successfully mounted, perhaps changing an LED color or something.
+- Currently there is only one known "bug" which is that the system doesn't seem to support SD card removal and re-insertion while the system remains powered and running.  In this case, the SD card seems to fail to mount on the second, and any subsequent insertions, however it should always work on the first insertion or if the system is booted with the SD card already in.
+
+**Future Improvements**
+- Fix known bugs
+- Could create a custom SPI communication state machine that wraps the lower level HAL library code and change the SPI bus to be non-blocking using DMA or interrupts instead of the current blocking nature.  This would require a decent amount of work though and is not necessary at this time.
+
 
 ## Hardware Overview
 
