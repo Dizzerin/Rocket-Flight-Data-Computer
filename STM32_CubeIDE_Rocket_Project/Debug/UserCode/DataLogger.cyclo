@@ -1,5 +1,0 @@
-../UserCode/DataLogger.c:82:17:findHighestLogNumber	6
-../UserCode/DataLogger.c:104:16:createLogFile	7
-../UserCode/DataLogger.c:151:13:writeCSVRow	4
-../UserCode/DataLogger.c:247:6:DataLogger_Init	1
-../UserCode/DataLogger.c:265:6:DataLogger_StateMachine_Task	16

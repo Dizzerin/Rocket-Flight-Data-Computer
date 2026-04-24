@@ -1,3 +1,0 @@
-../UserCode/Scheduler.c:75:6:Scheduler_Init	4	static
-../UserCode/Scheduler.c:81:6:Scheduler_RegisterTask	24	static
-../UserCode/Scheduler.c:100:6:Scheduler_Run	24	static

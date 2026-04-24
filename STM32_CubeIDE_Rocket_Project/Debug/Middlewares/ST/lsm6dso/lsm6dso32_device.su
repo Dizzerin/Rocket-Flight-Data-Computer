@@ -1,5 +1,0 @@
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:78:9:lsm6_init	16	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:140:9:lsm6_readData	24	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:195:9:lsm6_getAndPrintData	64	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:229:16:platform_write	32	static
-../Middlewares/ST/lsm6dso/lsm6dso32_device.c:275:16:platform_read	72	static
