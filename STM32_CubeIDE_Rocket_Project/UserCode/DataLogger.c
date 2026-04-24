@@ -166,11 +166,11 @@ static void writeCSVRow(uint32_t writeTimestamp)
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
  *    │ isAccelDataNew        │ %u      │ 1                                     │ 1            │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
- *    │ accel_mg[0..2] ×3     │ %.2f    │ ±32000.00 mg (FS32g)                  │ 9 each = 27  │
+ *    │ accel_mg[0..2] ×3     │ %.2f    │ ±32000.00 mg longest-case             │ 9 each = 27  │   // Note: the actual min and max depends on the value of LSM6DSO_ACCEL_FS, with largest case being when set to 32g
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
  *    │ isGyroDataNew         │ %u      │ 1                                     │ 1            │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
- *    │ gyro_mdps[0..2] ×3    │ %.2f    │ ±2000000.00 mdps (32767 × 70 mdps/LSB)│ 11 each = 33 │
+ *    │ gyro_mdps[0..2] ×3    │ %.2f    │ ±2000000.00 mdps longest-case         │ 11 each = 33 │  // Note: the actual min and max depends on the value of LSM6DSO_GYRO_FS, with largest case being when sest to 2000dps
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
  *    │ isTempDataNew         │ %u      │ 1                                     │ 1            │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤

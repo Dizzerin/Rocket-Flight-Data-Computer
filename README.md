@@ -25,7 +25,7 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 
 | Peripheral | Interface | User Module | Description |
 |---|---|---|---|
-| [LSM6DSO32](STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h) IMU | SPI1 (16-bit) | `Middlewares/ST/lsm6dso/lsm6dso32_device.c/.h` | 6-axis IMU — accelerometer ±32 g, gyroscope ±2000 dps, 104 Hz ODR |
+| [LSM6DSO32](STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h) IMU | SPI1 (16-bit) | `Middlewares/ST/lsm6dso/lsm6dso32_device.c/.h` | 6-axis IMU — accelerometer up to ±32 g (scale configurable via `LSM6DSO_ACCEL_FS`), gyroscope up to ±2000 dps (scale configurable via `LSM6DSO_GYRO_FS`), 104 Hz ODR — see `lsm6dso32_device.h` |
 | [BME680](STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h) Barometer | SPI3 (8-bit) | `UserCode/bme680_device.c/.h` | Pressure, temperature, humidity — forced-mode, 20 Hz triggered |
 | SD Card | SPI2 (8-bit) | `UserCode/SD_Card.c/.h` | FAT filesystem via FatFs — CSV data logging |
 | LED | GPIO (PB3) | `Core/Src/main.c` | Heartbeat blink (1 Hz); fast-blink on fatal error |
@@ -259,19 +259,19 @@ WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_Ne
 | 1 | `WriteTime_ms` | ms | `%lu` | 0 | 4,294,967,295 | Wall-clock tick at time of row write (rolls over after ~49.7 days) |
 | 2 | `IMU_Timestamp_ms` | ms | `%lu` | 0 | 4,294,967,295 | `HAL_GetTick()` captured at SPI read time |
 | 3 | `Accel_New` | flag | `%u` | 0 | 1 | 1 = fresh accelerometer data this row; 0 = repeated from previous read |
-| 4 | `Accel_X_mg` | milli-g | `%.2f` | −32000 | +32000 | ~0 mg at rest (sensor X-axis horizontal) |
-| 5 | `Accel_Y_mg` | milli-g | `%.2f` | −32000 | +32000 | ~0 mg at rest (sensor Y-axis horizontal) |
-| 6 | `Accel_Z_mg` | milli-g | `%.2f` | −32000 | +32000 | ~+1000 mg at rest (1 g gravity on Z-axis) |
+| 4 | `Accel_X_mg` | milli-g | `%.2f` | −32000 | +32000 | ~0 mg at rest (sensor X-axis horizontal); actual range depends on `LSM6DSO_ACCEL_FS` |
+| 5 | `Accel_Y_mg` | milli-g | `%.2f` | −32000 | +32000 | ~0 mg at rest (sensor Y-axis horizontal); actual range depends on `LSM6DSO_ACCEL_FS` |
+| 6 | `Accel_Z_mg` | milli-g | `%.2f` | −32000 | +32000 | ~+1000 mg at rest (1 g gravity on Z-axis); actual range depends on `LSM6DSO_ACCEL_FS` |
 | 7 | `Gyro_New` | flag | `%u` | 0 | 1 | 1 = fresh gyroscope data this row |
-| 8 | `Gyro_X_mdps` | milli-dps | `%.2f` | −2,000,000 | +2,000,000 | ~0 mdps at rest |
-| 9 | `Gyro_Y_mdps` | milli-dps | `%.2f` | −2,000,000 | +2,000,000 | ~0 mdps at rest |
-| 10 | `Gyro_Z_mdps` | milli-dps | `%.2f` | −2,000,000 | +2,000,000 | ~0 mdps at rest |
+| 8 | `Gyro_X_mdps` | milli-dps | `%.2f` | −2,000,000 | +2,000,000 | ~0 mdps at rest; actual range depends on `LSM6DSO_GRYO_FS` |
+| 9 | `Gyro_Y_mdps` | milli-dps | `%.2f` | −2,000,000 | +2,000,000 | ~0 mdps at rest; actual range depends on `LSM6DSO_GRYO_FS` |
+| 10 | `Gyro_Z_mdps` | milli-dps | `%.2f` | −2,000,000 | +2,000,000 | ~0 mdps at rest; actual range depends on `LSM6DSO_GRYO_FS` |
 | 11 | `Temp_New` | flag | `%u` | 0 | 1 | 1 = fresh IMU die temperature this row |
 | 12 | `IMU_Temp_C` | °C | `%.2f` | −40 | +85 | ~25 °C at room temperature |
 | 13 | `BME_Timestamp_ms` | ms | `%lu` | 0 | 4,294,967,295 | `HAL_GetTick()` when BME680 measurement completed; **empty until first reading** |
-| 14 | `Pressure_hPa` | hPa | `%.2f` | 300 | 1100 | ~1013 hPa at sea level; ~950 hPa at 500 m altitude; empty until first reading |
-| 15 | `BME_Temp_C` | °C | `%.2f` | −40 | +85 | ~20–30 °C indoors; empty until first reading |
-| 16 | `Humidity_pctRH` | %RH | `%.2f` | 0 | 100 | ~30–60 %RH indoors; empty until first reading |
+| 14 | `Pressure_hPa` | hPa | `%.2f` | 300 | 1100 | ~1013 hPa at sea level; ~950 hPa at 500 m altitude; **empty until first reading** |
+| 15 | `BME_Temp_C` | °C | `%.2f` | −40 | +85 | ~20–30 °C indoors; **empty until first reading** |
+| 16 | `Humidity_pctRH` | %RH | `%.2f` | 0 | 100 | ~30–60 %RH indoors; **empty until first reading** |
 
 **Notes:**
 - Columns 13–16 are blank (empty fields) until the BME680 completes its first measurement.

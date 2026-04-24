@@ -69,6 +69,15 @@ static uint8_t whoamI, rst;
 stmdev_ctx_t dev_ctx;
 uint8_t isInitialized = 0;
 
+/*
+ * Conversion function pointers — set in lsm6_init() based on LSM6DSO_ACCEL_FS
+ * and LSM6DSO_GYRO_FS. Using function pointers here means the user only needs
+ * to change the #defines in lsm6dso32_device.h; the correct conversion function
+ * is automatically selected at init time.
+ */
+static float_t (*accelConvert)(int16_t) = NULL;
+static float_t (*gyroConvert)(int16_t)  = NULL;
+
 /* Private functions ---------------------------------------------------------*/
 static int32_t platform_write(void *handle, uint8_t reg, const uint8_t *bufp, uint16_t len);
 static int32_t platform_read(void *handle, uint8_t reg, uint8_t *bufp, uint16_t len);
@@ -113,9 +122,28 @@ uint8_t lsm6_init(void)
   lsm6dso32_i3c_disable_set(&dev_ctx, LSM6DSO32_I3C_DISABLE);
   /* Enable Block Data Update */
   lsm6dso32_block_data_update_set(&dev_ctx, PROPERTY_ENABLE);
-  /* Set full scale */
-  lsm6dso32_xl_full_scale_set(&dev_ctx, LSM6DSO32_32g);
-  lsm6dso32_gy_full_scale_set(&dev_ctx, LSM6DSO32_2000dps);
+  /* Set full scale — driven by LSM6DSO_ACCEL_FS and LSM6DSO_GYRO_FS in lsm6dso32_device.h */
+  lsm6dso32_xl_full_scale_set(&dev_ctx, LSM6DSO_ACCEL_FS);
+  lsm6dso32_gy_full_scale_set(&dev_ctx, LSM6DSO_GYRO_FS);
+
+  /* Select the conversion functions that match the configured full-scale ranges.
+   * Keeping this in sync with the FS setting automatically prevents a silent
+   * scaling error if the #defines in the header are changed. */
+  switch (LSM6DSO_ACCEL_FS) {
+      case LSM6DSO32_4g:   accelConvert = lsm6dso32_from_fs4_to_mg;   break;
+      case LSM6DSO32_8g:   accelConvert = lsm6dso32_from_fs8_to_mg;   break;
+      case LSM6DSO32_16g:  accelConvert = lsm6dso32_from_fs16_to_mg;  break;
+      case LSM6DSO32_32g:  accelConvert = lsm6dso32_from_fs32_to_mg;  break;
+  }
+
+  switch (LSM6DSO_GYRO_FS) {
+      case LSM6DSO32_125dps:   gyroConvert = lsm6dso32_from_fs125_to_mdps;   break;
+      case LSM6DSO32_250dps:   gyroConvert = lsm6dso32_from_fs250_to_mdps;   break;
+      case LSM6DSO32_500dps:   gyroConvert = lsm6dso32_from_fs500_to_mdps;   break;
+      case LSM6DSO32_1000dps:  gyroConvert = lsm6dso32_from_fs1000_to_mdps;  break;
+      case LSM6DSO32_2000dps:  gyroConvert = lsm6dso32_from_fs2000_to_mdps;  break;
+  }
+
   /* Set ODR (Output Data Rate) and power mode*/
   lsm6dso32_xl_data_rate_set(&dev_ctx, LSM6DSO32_XL_ODR_104Hz_HIGH_PERF);
   lsm6dso32_gy_data_rate_set(&dev_ctx, LSM6DSO32_GY_ODR_104Hz_HIGH_PERF);
@@ -157,9 +185,9 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
   if (reg.status_reg.xlda) {
       memset(data_raw_acceleration, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_acceleration_raw_get(&dev_ctx, data_raw_acceleration);
-      acceleration_mg[0] = lsm6dso32_from_fs32_to_mg(data_raw_acceleration[0]);
-      acceleration_mg[1] = lsm6dso32_from_fs32_to_mg(data_raw_acceleration[1]);
-      acceleration_mg[2] = lsm6dso32_from_fs32_to_mg(data_raw_acceleration[2]);
+      acceleration_mg[0] = accelConvert(data_raw_acceleration[0]);
+      acceleration_mg[1] = accelConvert(data_raw_acceleration[1]);
+      acceleration_mg[2] = accelConvert(data_raw_acceleration[2]);
       out->isAccelDataNew = 1;
   }
   out->accel_mg[0] = acceleration_mg[0];
@@ -170,9 +198,9 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
   if (reg.status_reg.gda) {
       memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate);
-      angular_rate_mdps[0] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[0]);
-      angular_rate_mdps[1] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[1]);
-      angular_rate_mdps[2] = lsm6dso32_from_fs2000_to_mdps(data_raw_angular_rate[2]);
+      angular_rate_mdps[0] = gyroConvert(data_raw_angular_rate[0]);
+      angular_rate_mdps[1] = gyroConvert(data_raw_angular_rate[1]);
+      angular_rate_mdps[2] = gyroConvert(data_raw_angular_rate[2]);
       out->isGyroDataNew = 1;
   }
   out->gyro_mdps[0] = angular_rate_mdps[0];
