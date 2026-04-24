@@ -43,7 +43,7 @@ Each power-on or SD card insertion creates a new file named `LOG_XXXX.CSV` (e.g.
 ### Header
 
 ```
-WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_New,Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,Temp_New,IMU_Temp_C,BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH
+WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_New,Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,Temp_New,IMU_Temp_C,BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH,Altitude_AGL_ft
 ```
 
 ### Column Definitions
@@ -66,6 +66,7 @@ WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_Ne
 | 14 | `Pressure_hPa` | hPa | `%.2f` | 300 – 1100 | Compensated absolute pressure. ~1013 hPa at sea level; ~982 hPa at ~250 m altitude. **Empty until first BME reading.** |
 | 15 | `BME_Temp_C` | °C | `%.2f` | −40 to +85 | BME680 compensated temperature. Typically reads 1–3°C above true ambient due to sensor self-heating from the PCB. **Empty until first BME reading.** |
 | 16 | `Humidity_pctRH` | %RH | `%.2f` | 0 – 100 | Compensated relative humidity. Typical indoors: 30–60% RH. **Empty until first BME reading.** |
+| 17 | `Altitude_AGL_ft` | ft | `%.2f` | — | AGL altitude computed on-board from `Pressure_hPa` using the barometric formula (see Section 6). 0.00 ft at the first valid BME reading (ground reference). Updates at 20 Hz alongside the BME columns. **Empty until first BME reading.** |
 
 ### The LSM6DSO `Accel_New`, `Gryo_New`, and `Temp_New` Flags — Why They Happen
 
@@ -83,7 +84,7 @@ Use the `BME_Timestamp_ms` value to detect when new BME data was obtained, see n
 
 - **`WriteTime_ms` vs `IMU_Timestamp_ms`**: `IMU_Timestamp_ms` is captured right before the SPI transaction to the IMU, and `WriteTime_ms` is captured just before the `f_write` call. They differ by 1–2 ms (SPI transaction time). For computing velocities or angles by integration, use `IMU_Timestamp_ms`.
 
-- **`BME_Timestamp_ms`**: This is the tick at which the BME680 measurement completed internally — i.e., when `bme680_stateMachine()` read the data out. It is not updated until the next BME measurement completes (every 50 ms), so for the 4–5 IMU rows between BME updates, `BME_Timestamp_ms`, `Pressure_hPa`, `BME_Temp_C`, and `Humidity_pctRH` are all identical (the cached previous reading).
+- **`BME_Timestamp_ms`**: This is the tick at which the BME680 measurement completed internally — i.e., when `bme680_stateMachine()` read the data out. It is not updated until the next BME measurement completes (every 50 ms), so for the 4–5 IMU rows between BME updates, `BME_Timestamp_ms`, `Pressure_hPa`, `BME_Temp_C`, `Humidity_pctRH`, and `Altitude_AGL_ft` are all identical (the cached previous reading).
 
 ---
 
@@ -94,6 +95,7 @@ Use the `BME_Timestamp_ms` value to detect when new BME data was obtained, see n
 - **Full-scale range**: ±32 g (configurable via `LSM6DSO_ACCEL_FS` in `lsm6dso32_device.h`)
 - **ODR**: 104 Hz (one new sample every ~9.6 ms)
 - **Power mode**: High-performance
+- **LSB size (min resolution) at ±16g**: 0.488 mg/LSB (from LSM6DSO32 datasheet Table 3) <- default
 - **LSB size (min resolution) at ±32g**: 0.976 mg/LSB (from LSM6DSO32 datasheet Table 3)
 
 ### Expected Values at Rest
@@ -275,21 +277,32 @@ The 8-second response time means rapid humidity changes (like flying through a c
 
 ## 6. Computing Altitude from Pressure
 
+### On-Board Altitude Logging
+
+The firmware computes an estimated AGL altitude in real-time and logs it directly as the `Altitude_AGL_ft` column (column 17). Note that you can get a more accurate altitude in post processing by implementing better averaging, filtering, and accounting for non-standard temperature lapse rates etc.
+
+// TODO the following will change once we implement some averaging.
+The ground reference pressure (P₀) is captured automatically from the **first valid BME680 reading** after power-on or SD card insertion. Every subsequent pressure reading is converted to AGL altitude in feet relative to that baseline. The value in `Altitude_AGL_ft` is 0.00 at that initial ground reference moment.
+
 ### Barometric Formula
 
-The standard International Standard Atmosphere (ISA) hypsometric equation converts pressure to altitude (assumming standard atmoshpheric conditions and standard temperature lapse rate):
+The standard International Standard Atmosphere (ISA) hypsometric equation converts pressure to altitude (assumming standard atmoshpheric conditions and standard temperature lapse rate).
+The following is the formula used by the firmware:
 
 ```
-h = 44330 × (1 − (P / P₀)^0.1903)
+h_meters = 44330 × (1 − (P / P₀)^0.1903)
+h_feet   = h_meters × 3.28084
 ```
 
 Where:
 - `h` = altitude in meters
 - `P` = measured pressure in hPa
-- `P₀` = reference pressure at ground level in hPa
+- `P₀` = reference pressure at ground level in hPa // TODO currently just captured from first reading, should update this to average at least some readings
 - `0.1903` = `(R × L) / (g × M)` using ISA constants (lapse rate L = 0.0065 K/m, R = 8.314 J/mol·K, g = 9.807 m/s², M = 0.02896 kg/mol)
 
-### Setting P₀ — Ground Reference Pressure - to compute AGL altitude
+### Computing AGL Altitude in Post-Processing
+
+Note that the altitude computation formula used in the firmware only provides an estimated altitude as it assumes standard temperature lapse rate and doesn't account for actual lapse rate or other temperature affects.  Also as of right now, it doesn't do any averaging to obtain the initial `P₀`, though I plan to change this soon (//TODO come back and update this comment once done).
 
 To get an AGL altitude, `P₀` should be the pressure at the launch site at the time of launch, **not** sea-level standard pressure (1013.25 hPa). Using standard sea-level pressure will give estimated MSL (mean sea level) altitude, not AGL (above ground level).  To get actual MSL altitude you would need to the know the equivalent sea level pressure at the launch site at the time of launch, or compute this using the known launch pad altitude, but for model rocket analysis we mostly care about AGL altitude anyways.
 
@@ -352,13 +365,13 @@ This would cause a significant altitude error. To avoid this, the sensor enclosu
 
 ### Empty BME Columns at Log Start
 
-The first few rows of some log files will have empty `BME_Timestamp_ms`, `Pressure_hPa`, `BME_Temp_C`, and `Humidity_pctRH` columns. This is expected and happens due to how the BME680 operates.
+The first few rows of some log files will have empty `BME_Timestamp_ms`, `Pressure_hPa`, `BME_Temp_C`, `Humidity_pctRH`, and `Altitude_AGL_ft` columns. This is expected and happens due to how the BME680 operates.
 
 The BME680 runs in **forced mode** — it only performs a measurement when explicitly triggered, then returns to sleep. At startup, `DataLogger_Init()` triggers the first measurement, but it takes approximately 40–50 ms to complete (x16 pressure oversampling + x2 temperature + x1 humidity require multiple ADC cycles). Meanwhile, the scheduler is already writing CSV rows at 100 Hz. Until `bme680_stateMachine()` detects that the measurement is complete and sets an internal `bmeHasReturnedFirstReading` flag, the CSV writer outputs empty fields for those columns.
 
 Typically, the first 3–5 rows will have empty BME columns. If the SD card took longer to mount (e.g., slow card settle time) or was inserted after the system had already been running for a bit, the BME may have already completed its first measurement before logging started — in which case all rows will have data
 
-**In analysis**, drop rows where `Pressure_hPa` is blank or NaN before any barometric calculations.
+**In analysis**, drop rows where `Pressure_hPa` is blank or NaN before any barometric calculations. `Altitude_AGL_ft` will also be blank or NaN in the same rows.
 
 ### Timestamp Gaps from SD Card Sync
 

@@ -1,6 +1,6 @@
 # Rocket Flight Data Computer
 
-A flight data logger for model rockets built around the **STM32H743VGT6** microcontroller. It records inertial (accelerometer + gyroscope) data at 100Hz and environmental (pressure, temperature, humidity) data at 20Hz to an SD card in CSV format at for post-flight analysis, graphing, and plotting.
+A flight data logger for model rockets built around the **STM32H743VGT6** microcontroller. It records inertial (accelerometer + gyroscope) data at 100Hz and environmental (pressure, temperature, humidity) data at 20Hz to an SD card in CSV format for post-flight analysis, graphing, and plotting.
 
 ---
 
@@ -256,7 +256,7 @@ Each power-on or SD card insertion creates a new `LOG_XXXX.CSV` file. The first 
 ### CSV Header
 
 ```
-WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_New,Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,Temp_New,IMU_Temp_C,BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH
+WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_New,Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,Temp_New,IMU_Temp_C,BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH,Altitude_AGL_ft
 ```
 
 ### Column Definitions
@@ -279,17 +279,19 @@ WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_Ne
 | 14 | `Pressure_hPa` | hPa | `%.2f` | 300 | 1100 | ~1013 hPa at sea level; ~950 hPa at 500 m altitude; **empty until first reading** |
 | 15 | `BME_Temp_C` | °C | `%.2f` | −40 | +85 | ~20–30 °C indoors; **empty until first reading** |
 | 16 | `Humidity_pctRH` | %RH | `%.2f` | 0 | 100 | ~30–60 %RH indoors; **empty until first reading** |
+| 17 | `Altitude_AGL_ft` | ft | `%.2f` | — | — | AGL altitude from barometric formula; 0.00 at the first valid BME680 reading (ground reference); **empty until first reading** |
 
 **Notes:**
-- Columns 13–16 are blank (empty fields) until the BME680 completes its first measurement.
+- Columns 13–17 are blank (empty fields) until the BME680 completes its first measurement.
 - The `Accel_New`, `Gyro_New`, and `Temp_New` flags indicate whether the LSM6DSO's data-ready status register reported fresh data at the time of that specific SPI read. Even when `0`, the value columns contain the most recent valid reading.
 - `WriteTime_ms` and `IMU_Timestamp_ms` could differ by 1–2 ms due to SPI read overhead.
-- Maximum CSV row size is approximately 136 characters (160-byte buffer allocated with 24-byte margin).
+- `Altitude_AGL_ft` is computed on-board each time a new BME680 reading arrives using `h = 44330 × (1 − (P/P₀)^0.1903) × 3.28084`. P₀ is captured from the first valid pressure reading after power-on or SD card insertion.
+- Maximum CSV row size is approximately 147 characters (160-byte buffer allocated with 13-byte margin).
 
 ### Example Row
 
 ```
-12345,12344,1,23.50,-15.25,998.00,1,120.30,-45.10,30.20,1,27.43,12300,1013.25,24.61,52.30
+12345,12344,1,23.50,-15.25,998.00,1,120.30,-45.10,30.20,1,27.43,12300,1013.25,24.61,52.30,125.48
 ```
 
 ---

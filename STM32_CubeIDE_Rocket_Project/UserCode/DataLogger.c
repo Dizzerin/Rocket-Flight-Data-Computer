@@ -36,6 +36,7 @@
 #include <string.h>
 #include "main.h"           /* myprintf() */
 #include "stm32h7xx_hal.h"  /* HAL_GetTick() */
+#include <math.h>           /* powf() for barometric altitude computation */
 
 /* =========================================================================
  * CSV header — written once at the top of each new log file
@@ -46,7 +47,8 @@ static const char CSV_HEADER[] =
     "IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,"
     "Gyro_New,Gyro_X_mdps,Gyro_Y_mdps,Gyro_Z_mdps,"
     "Temp_New,IMU_Temp_C,"
-    "BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH\r\n";
+    "BME_Timestamp_ms,Pressure_hPa,BME_Temp_C,Humidity_pctRH,"
+    "Altitude_AGL_ft\r\n";
 
 /* =========================================================================
  * Module state
@@ -70,6 +72,10 @@ static uint8_t       bmeHasReturnedFirstReading = 0;
 static uint32_t      bmeLastTrigger     = 0;
 static uint32_t      lastCsvWriteTick   = 0;
 static uint32_t      lastSyncTick       = 0;
+
+static float         groundPressure_hPa = 0.0f;  /* pressure at power-on ground level (P0) */
+static uint8_t       hasGroundPressure  = 0;     /* 1 once the first valid BME reading is captured as ground ref */
+static float         altitude_AGL_ft    = 0.0f;  /* current AGL altitude in feet */
 
 /* =========================================================================
  * Internal helpers
@@ -155,8 +161,8 @@ static void writeCSVRow(uint32_t writeTimestamp)
         myprintf("DL: failed to read IMU data. Is it initialized?\r\n");
     }
 
-/*    Here's the field-by-field breakdown:                                                                                   
- *                                                              
+/*    Here's the field-by-field breakdown:
+ *
  *    ┌───────────────────────┬─────────┬───────────────────────────────────────┬──────────────┐
  *    │         Field         │ Format  │               Max value               │  Max chars   │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
@@ -184,14 +190,16 @@ static void writeCSVRow(uint32_t writeTimestamp)
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
  *    │ humidity_pctRH        │ %.2f    │ 0.00–100.00%                          │ 6            │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
- *    │ 15 commas + \r\n      │ literal │ —                                     │ 17           │
+ *    │ altitude_AGL_ft       │ %.2f    │ ±99999.00 ft                          │ 9            │
+ *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
+ *    │ 16 commas + \r\n      │ literal │ —                                     │ 18           │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
  *    │ null terminator       │ —       │ —                                     │ 1            │
  *    ├───────────────────────┼─────────┼───────────────────────────────────────┼──────────────┤
- *    │ Total                 │         │                                       │ 136          │
+ *    │ Total                 │         │                                       │ 147          │
  *    └───────────────────────┴─────────┴───────────────────────────────────────┴──────────────┘
  */
-    char line[160];  /* Max row = 136 bytes (calculated); 160 gives 24-byte margin */
+    char line[160];  /* Max row = 147 bytes (calculated); 160 gives 13-byte margin */
 
     if (bmeHasReturnedFirstReading) {
         snprintf(line, sizeof(line),
@@ -199,7 +207,8 @@ static void writeCSVRow(uint32_t writeTimestamp)
                  "%lu,%u,%.2f,%.2f,%.2f,"
                  "%u,%.2f,%.2f,%.2f,"
                  "%u,%.2f,"
-                 "%lu,%.2f,%.2f,%.2f\r\n",
+                 "%lu,%.2f,%.2f,%.2f,"
+                 "%.2f\r\n",
                  (unsigned long)writeTimestamp,
                  (unsigned long)imu.timestamp_ms,
                  imu.isAccelDataNew,
@@ -211,7 +220,8 @@ static void writeCSVRow(uint32_t writeTimestamp)
                  (unsigned long)bmeCache.timestamp_ms,
                  bmeCache.pressure_hPa,
                  bmeCache.temperature_degC,
-                 bmeCache.humidity_pctRH);
+                 bmeCache.humidity_pctRH,
+                 altitude_AGL_ft);
     } else {
         /* BME680 hasn't returned its first reading yet — leave BME columns empty */
         snprintf(line, sizeof(line),
@@ -219,7 +229,7 @@ static void writeCSVRow(uint32_t writeTimestamp)
                  "%lu,%u,%.2f,%.2f,%.2f,"
                  "%u,%.2f,%.2f,%.2f,"
                  "%u,%.2f,"
-                 ",,,\r\n",
+                 ",,,,\r\n",
                  (unsigned long)writeTimestamp,
                  (unsigned long)imu.timestamp_ms,
                  imu.isAccelDataNew,
@@ -250,6 +260,9 @@ void DataLogger_Init(void)
     isFileOpen                 = 0;
     dlState                    = DL_IDLE;
     prevSdState                = SD_GetState();
+    hasGroundPressure          = 0;
+    groundPressure_hPa         = 0.0f;
+    altitude_AGL_ft            = 0.0f;
 
     bme680_setGasEnabled(0);         /* Gas sensor not needed for rocketry */
     bme680_triggerMeasurement();     /* Kick off first measurement immediately */
@@ -286,6 +299,11 @@ void DataLogger_StateMachine_Task(void)
             // Reset BME cache so stale data is never written when logging resumes.
             bmeHasReturnedFirstReading = 0;
             memset(&bmeCache, 0, sizeof(bmeCache));
+
+            // Reset ground pressure so a fresh baseline is captured on the next mount.
+            hasGroundPressure  = 0;
+            groundPressure_hPa = 0.0f;
+            altitude_AGL_ft    = 0.0f;
         }
         prevSdState = currentSdState;
     }
@@ -298,6 +316,31 @@ void DataLogger_StateMachine_Task(void)
     if (bme680_isDataReady()) {
         bmeCache = bme680_getData();
         bmeHasReturnedFirstReading = 1;
+
+        // TODO make this average the first 5 seconds of readings or something for a much more accurate baseline, and then only compute altitude after that 
+        // Capture first pressure reading as ground reference (P0) for barometric altitude calculations.
+        /* All subsequent AGL altitude values are relative to this baseline. */
+        if (!hasGroundPressure && bmeCache.pressure_hPa > 0.0f) {
+            groundPressure_hPa = bmeCache.pressure_hPa;
+            hasGroundPressure  = 1;
+        }
+
+        // TODO verify the results and accuracy of this computation
+        // Compute estimated AGL altitude using the simplified ISA barometric formula:
+        //   h_meters = 44330 * (1 - (P / P0)^0.1903)
+        //   Then convert meters to feet (* 3.28084)
+        // Note: This formula only gives an estimated AGL altitude and assumes a standard temperature lapse rate.
+        // Post processing could compute a more accurate altitude using the raw pressure
+        // and temperature data, and averaging, filtering, and compensating for temerature effects,
+        // but this is good enough for a rough estimate and its nice to be able to see this estimated
+        // data in the log at a glance with no post-processing, and having this data local could be
+        // useful for detecting apogee and deploying a parachute etc., though I suppose you could
+        // do that with just raw pressure data as well, and you would still want some filtering/averaging.
+        if (hasGroundPressure) {
+            altitude_AGL_ft = 44330.0f
+                              * (1.0f - powf(bmeCache.pressure_hPa / groundPressure_hPa, 0.1903f))
+                              * 3.28084f;
+        }
     }
 
     /* Trigger a new BME680 measurement every DATALOGGER_BME_TRIGGER_MS.
