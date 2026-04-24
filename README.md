@@ -30,6 +30,13 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 | SD Card | SPI2 (8-bit) | `UserCode/SD_Card.c/.h` | FAT filesystem via FatFs — CSV data logging |
 | LED | GPIO (PB3) | `Core/Src/main.c` | Heartbeat blink (1 Hz); fast-blink on fatal error |
 
+> **IMU scale configuration:** The accelerometer and gyroscope full-scale ranges are set by two `#define`s at the top of [`lsm6dso32_device.h`](STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h). Change only the `#define` — the correct conversion function is selected automatically at init time.
+>
+> | Define | Default | Options |
+> |---|---|---|
+> | `LSM6DSO_ACCEL_FS` | `LSM6DSO32_16g` | `LSM6DSO32_4g` / `_8g` / `_16g` / `_32g` |
+> | `LSM6DSO_GYRO_FS` | `LSM6DSO32_2000dps` | `LSM6DSO32_125dps` / `_250dps` / `_500dps` / `_1000dps` / `_2000dps` |
+
 ---
 
 ## Project Structure
