@@ -32,8 +32,6 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 **Future Improvements**
 - Fix known bugs listed above.
 - Reduce limitations listed above.
-- Create a define to quickly enable/disable printing the log file data to UART3 as well – perhaps we might need to print it as a slower rate to not saturate the UART bus or overflow buffers, or we may need to increase buffer sizes or implement local software buffering etc.  Look into all of this.
-
 - Could create a custom SPI communication state machine that wraps the lower level HAL library code and change the SPI bus to be non-blocking using DMA or interrupts instead of the current blocking nature.  This would require a decent amount of work though and is not necessary at this time.
 
 
@@ -351,6 +349,17 @@ Debug messages are sent over **UART3** at **115200 baud, 8N1** using the `myprin
 TX and RX are always crossed: the PCB's TX connects to the bridge's RX, and the PCB's RX connects to the bridge's TX.
 
 On the host PC, open the bridge's COM/tty port at **115200 baud, 8 data bits, no parity, 1 stop bit** using any serial terminal (e.g., PuTTY, RealTerm, Tera Term, `screen`, `minicom`).
+
+### Live CSV Echo to UART
+
+To see CSV rows printed live to the debug UART during bench testing, set `DATALOGGER_UART_ECHO` to `1` in [`DataLogger.h`](STM32_CubeIDE_Rocket_Project/UserCode/DataLogger.h):
+
+```c
+#define DATALOGGER_UART_ECHO     1    /* 0 = disabled (default), 1 = enabled */
+#define DATALOGGER_UART_ECHO_MS  500U /* print interval in ms (default 2 Hz) */
+```
+
+**Why the rate limit?** `myprintf()` is blocking — a worst-case 147-byte row takes ~12.8 ms to transmit at 115200 baud, which is longer than the 10 ms CSV write period. Printing at 100 Hz would also require ~14,700 bytes/sec, exceeding the UART's ~11,520 byte/sec capacity. At the default 500 ms interval, UART load is ~294 bytes/sec and the brief blocking window (~12.8 ms every 500 ms) has negligible impact on logging. Set `DATALOGGER_UART_ECHO` back to `0` before flight — the debug printing code is disabled by default and doesn't even compile when `0`.
 
 ### Startup Messages
 

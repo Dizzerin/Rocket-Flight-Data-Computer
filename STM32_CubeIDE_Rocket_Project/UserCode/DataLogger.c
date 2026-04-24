@@ -257,6 +257,22 @@ static void writeCSVRow(uint32_t writeTimestamp)
         dlState    = DL_ERROR;
         return;
     }
+
+// Only compile this code if debug UART echo is enabled to avoid any runtime cost when disabled.
+#if DATALOGGER_UART_ECHO
+    /* Echo CSV row to UART3 at a reduced rate (DATALOGGER_UART_ECHO_MS).
+     * Echoing every row is not possible: myprintf() is blocking and a
+     * worst-case 147-byte row takes ~12.8 ms at 115200 baud — longer than the
+     * 10 ms write period. 
+     * Additionally, 11,520 bytes/sec is the maximum UART throughput, 
+     * which is insufficient for echoing every row at 100 Hz.
+     * So we echo at a reduced rate. */
+    static uint32_t lastUartEchoTick = 0;
+    if ((writeTimestamp - lastUartEchoTick) >= DATALOGGER_UART_ECHO_MS) {
+        lastUartEchoTick = writeTimestamp;
+        myprintf("%s", line);   /* line is already \r\n terminated */
+    }
+#endif
 }
 
 /* =========================================================================
