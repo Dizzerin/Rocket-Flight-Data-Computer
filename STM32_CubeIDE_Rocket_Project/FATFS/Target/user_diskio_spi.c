@@ -6,6 +6,7 @@
   ******************************************************************************
   * Portions copyright (C) 2014, ChaN, all rights reserved.
   * Portions copyright (C) 2017, kiwih, all rights reserved.
+  * Portions revised       2026, Caleb N 
   *
   * This software is a free software and there is NO WARRANTY.
   * No restriction on use. You can use, modify and redistribute it for
@@ -18,6 +19,7 @@
 //This code was ported by kiwih from a copywrited (C) library written by ChaN
 //available at http://elm-chan.org/fsw/ff/ffsample.zip
 //(text at http://elm-chan.org/fsw/ff/00index_e.html)
+// And then revised by Caleb N in 2026 to add support for STM32H7 and to be wrapped by CubeMX-generated user_diskio.c code.
 
 //This file provides the FatFs driver functions and SPI code required to manage
 //an SPI-connected MMC or compatible SD card with FAT
@@ -32,39 +34,7 @@
 //Make sure you set #define SD_CS_Pin as some GPIO pin in main.h
 extern SPI_HandleTypeDef SD_SPI_HANDLE;
 
-/* Function prototypes */
-
-// Macros for STM32F series processors
-//   (Note that the _256 is used as a mask to clear the prescalar bits as it provides binary 111 in the correct position)
-//   #define FCLK_SLOW() { MODIFY_REG(SD_SPI_HANDLE.Instance->CR1, SPI_BAUDRATEPRESCALER_256, SPI_BAUDRATEPRESCALER_256); }
-//   #define FCLK_FAST() { MODIFY_REG(SD_SPI_HANDLE.Instance->CR1, SPI_BAUDRATEPRESCALER_256, SPI_BAUDRATEPRESCALER_16); }
-// Macros for our STM32H7 series processor
-/* On STM32H7, the baud-rate prescaler is the MBR[2:0] field in bits [30:28]
- * of the SPI_CFG1 register.
- * Reference: STM32H743 Reference Manual RM0433, Section 50.5.10
- *   "SPI configuration register 1 (SPI_CFG1)", Table 672 — MBR[2:0] at bits
- *   [30:28] of SPI_CFG1.
- *   URL: https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743-753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
- *
- * Additionally, RM0433 Section 50.4.7 "Communication formats" states:
- *   "MBR[2:0] must not be changed when SPE = 1."
- * So before any change, one must also clear the SPE bit in CR1 before writing CFG1 and
- * restore it afterward.
- */
-// TODO We might need to adust these speeds to be even slower
-/* Set SCLK = fast, (4.6MBits/s for us) should be approx 4.5 MBits/s */
-#define FCLK_FAST() do { \
-    CLEAR_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
-    MODIFY_REG(SD_SPI_HANDLE.Instance->CFG1, SPI_CFG1_MBR, SPI_BAUDRATEPRESCALER_16); \
-    SET_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
-} while(0)
-/* Set SCLK = slow, (290KBits/s for us) should be approx 280 KBits/s*/
-#define FCLK_SLOW() do { \
-    CLEAR_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
-    MODIFY_REG(SD_SPI_HANDLE.Instance->CFG1, SPI_CFG1_MBR, SPI_BAUDRATEPRESCALER_256); \
-    SET_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE); \
-} while(0)
-
+/* MACROS */
 #define CS_HIGH()	{HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET);}
 #define CS_LOW()	{HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);}
 
@@ -147,6 +117,50 @@ void rcvr_spi_multi (
 {
 	for(UINT i=0; i<btr; i++) {
 		*(buff+i) = xchg_spi(0xFF);
+	}
+}
+
+
+
+// Functions to change SPI clock rate for STM32H7 series processor
+/* On STM32H7, the baud-rate prescaler is the MBR[2:0] field in bits [30:28]
+ * of the SPI_CFG1 register.
+ * Reference: STM32H743 Reference Manual RM0433, Section 50.5.10
+ *   "SPI configuration register 1 (SPI_CFG1)", Table 672 — MBR[2:0] at bits
+ *   [30:28] of SPI_CFG1.
+ *   URL: https://www.st.com/resource/en/reference_manual/rm0433-stm32h742-stm32h743-753-and-stm32h750-value-line-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+ *
+ * Additionally, RM0433 Section 50.4.7 "Communication formats" states:
+ *   "MBR[2:0] must not be changed when SPE = 1."
+ * So before any change, one must also clear the SPE bit in CR1 before writing CFG1 and
+ * restore it afterward.
+ * These functions preserve the original SPE state - if it was enabled, it will 
+ * be re-enabled after the change; if it was disabled, it will stay disabled.
+ */
+/* Set SCLK = fast, (4.6MBits/s for us) should be approx 4.5 MBits/s */
+static void fclk_fast(void) {
+	uint32_t speWasEnabled = READ_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE);
+
+	if (speWasEnabled) {
+		CLEAR_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE);
+	}
+    MODIFY_REG(SD_SPI_HANDLE.Instance->CFG1, SPI_CFG1_MBR, SPI_BAUDRATEPRESCALER_16);
+	if (speWasEnabled) {
+		SET_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE);
+	}
+}
+
+/* Set SCLK = slow, (290KBits/s for us) should be approx 280 KBits/s*/
+static void fclk_slow(void)
+{
+	uint32_t speWasEnabled = READ_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE);
+
+	if (speWasEnabled) {
+		CLEAR_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE);
+	}
+    MODIFY_REG(SD_SPI_HANDLE.Instance->CFG1, SPI_CFG1_MBR, SPI_BAUDRATEPRESCALER_256);
+	if (speWasEnabled) {
+		SET_BIT(SD_SPI_HANDLE.Instance->CR1, SPI_CR1_SPE);
 	}
 }
 
@@ -349,12 +363,12 @@ BYTE send_cmd (		/* Return value: R1 resp (bit7==1:Failed to send) */
  *
  * Re-initialization flow after card removal/re-insertion:
  *   1. Card removed  -> SD_Card.c calls sdCardTeardown()
- *                    -> USER_SPI_deinitialize() sets Stat = STA_NOINIT, FCLK_SLOW()
+ *                    -> USER_SPI_deinitialize() sets Stat = STA_NOINIT, fclk_slow()
  *   2. Card inserted -> SD_Card.c calls f_mount(&fatFs, "", 1) (forced mount)
  *                    -> FatFS calls disk_initialize() because STA_NOINIT is set
  *                    -> disk_initialize() calls USER_initialize() -> USER_SPI_initialize()
  *   3. This function runs the full SPI power-on protocol (dummy clocks, CMD0/CMD8/ACMD41)
- *   4. On success: FCLK_FAST() is called here (line below) and STA_NOINIT is cleared
+ *   4. On success: fclk_fast() is called here (line below) and STA_NOINIT is cleared
  *
  * This is the same path taken on first boot — the deinit/reinit cycle is identical
  * to a cold start from FatFS's perspective.
@@ -370,7 +384,7 @@ inline DSTATUS USER_SPI_initialize (
 
 	if (Stat & STA_NODISK) return Stat;	/* Is card existing in the soket? */
 
-	FCLK_SLOW();
+	fclk_slow();
 	for (n = 10; n; n--) xchg_spi(0xFF);	/* Send 80 dummy clocks */
 
 	ty = 0;
@@ -400,7 +414,7 @@ inline DSTATUS USER_SPI_initialize (
 	despiselect();
 
 	if (ty) {			/* OK */
-		FCLK_FAST();			/* Set fast clock */
+		fclk_fast();			/* Set fast clock */
 		Stat &= ~STA_NOINIT;	/* Clear STA_NOINIT flag */
 	} else {			/* Failed */
 		Stat = STA_NOINIT;
@@ -429,9 +443,9 @@ inline DSTATUS USER_SPI_initialize (
  *   STA_NOINIT here ensures the next f_mount() forces a full disk_initialize()
  *   call, which routes to USER_SPI_initialize() and runs the full init sequence.
  *
- * Why FCLK_SLOW is called here:
- *   USER_SPI_initialize() starts with FCLK_SLOW() before sending dummy clocks —
- *   the SD SPI protocol requires slow clock during init. FCLK_FAST() is called
+ * Why fclk_slow is called here:
+ *   USER_SPI_initialize() starts with fclk_slow() before sending dummy clocks —
+ *   the SD SPI protocol requires slow clock during init. fclk_fast() is called
  *   by USER_SPI_initialize() at the end of a successful init. Resetting to slow
  *   here ensures the clock is in the correct state if anything touches the SPI
  *   bus before the next init, and keeps the deinit/reinit cycle symmetric.
@@ -439,10 +453,20 @@ inline DSTATUS USER_SPI_initialize (
 void USER_SPI_deinitialize(void)
 {
     CS_HIGH();
-    HAL_SPI_Abort(&SD_SPI_HANDLE);
+
+    // Fully re-initialize the SPI peripheral
+    HAL_SPI_DeInit(&SD_SPI_HANDLE);
+    HAL_SPI_Init(&SD_SPI_HANDLE);
+	// Note: We could probably get away with just doing the following lines instead:
+	// Minimally reset the SPI peripheral state to avoid issues on next init - this should
+	// abort any in-progress or stuck transfers and reset the handle so it can be used again next time around
+	// __HAL_SPI_DISABLE(&SD_SPI_HANDLE);
+  	// SD_SPI_HANDLE.ErrorCode = HAL_SPI_ERROR_NONE;
+	// SD_SPI_HANDLE.State = HAL_SPI_STATE_READY;
+
     Stat     = STA_NOINIT;
     CardType = 0;
-    FCLK_SLOW();   /* USER_SPI_initialize() will call FCLK_FAST() on successful re-init */
+    fclk_slow();   /* USER_SPI_initialize() will call fclk_fast() on successful re-init */
 }
 
 

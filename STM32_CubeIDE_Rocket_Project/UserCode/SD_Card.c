@@ -70,13 +70,13 @@ static uint8_t cardIsPresent(void)
  * Call this before f_mount(NULL, "", 0) on every removal path.
  *
  * Re-initialization flow this enables:
- *   sdCardTeardown()                 -- sets Stat = STA_NOINIT, FCLK_SLOW, aborts SPI, deasserts CS
+ *   sdCardTeardown()                 -- sets Stat = STA_NOINIT, fclk_slow, aborts SPI, deasserts CS
  *   f_mount(NULL, "", 0)             -- unregisters the FatFS object (the filesystem is already gone)
  *   ... card re-inserted, settle wait ...
  *   f_mount(&fatFs, "", 1)           -- forced mount; FatFS sees STA_NOINIT and calls disk_initialize()
  *   disk_initialize() -> USER_SPI_initialize()
  *                                    -- runs 80 dummy clocks, CMD0, CMD8, ACMD41
- *                                    -- on success: FCLK_FAST() and STA_NOINIT cleared
+ *                                    -- on success: fclk_fast() and STA_NOINIT cleared
  *
  * Without the STA_NOINIT reset, FatFS's find_volume() would see the drive as already
  * initialized and skip disk_initialize() entirely, so the new card never enters SPI mode.
@@ -86,7 +86,7 @@ static uint8_t cardIsPresent(void)
  */
 static void sdCardTeardown(void)
 {
-    USER_SPI_deinitialize();   /* Stat = STA_NOINIT, CardType = 0, FCLK_SLOW */
+    USER_SPI_deinitialize();   /* Stat = STA_NOINIT, CardType = 0, fclk_slow */
     f_mount(NULL, "", 0);
 }
 
