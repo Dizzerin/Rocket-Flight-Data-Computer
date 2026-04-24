@@ -386,11 +386,11 @@ DataLogger: opened LOG_0005.CSV
 
 ### SPI Bus Configuration
 
-| Peripheral | SPI Handle | Data Size | Clock Speed | Mode | Notes |
-|---|---|---|---|---|---|
-| LSM6DSO32 IMU | `hspi1` | 16-bit | ~2 MHz (64 MHz / 32) | Mode 3 | 16-bit frame required by driver |
-| SD Card | `hspi2` | 8-bit | ~250 kHz (init) → ~25 MHz | Mode 0 | |
-| BME680 | `hspi3` | 8-bit | ~4 MHz (64 MHz / 16) | Mode 0 (CPOL=Low, CPHA=1Edge) | |
+| Peripheral | SPI Handle | Data Size | Clock Speed | Mode |
+|---|---|---|---|---|
+| LSM6DSO32 IMU | `hspi1` | 8-bit | ~4 MHz (64 MHz / 16) | Mode 0 (CPOL=Low, CPHA=1Edge) |
+| SD Card | `hspi2` | 8-bit | ~250 kHz at init (64 MHz/256) → ~4 MHz at runtime (64 MHz/16) | Mode 0 (CPOL=Low, CPHA=1Edge) |
+| BME680 | `hspi3` | 8-bit | ~4 MHz (64 MHz / 16) | Mode 0 (CPOL=Low, CPHA=1Edge) |
 
 ### Primary Pin Mappings
 
