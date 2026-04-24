@@ -412,9 +412,9 @@ uint8_t bme680_stateMachine(void)
 
             if (readResult == BME68X_W_NO_NEW_DATA || numFields == 0) {
                 /* Data not ready yet despite elapsed measDurationMs — timing jitter.
-                 * Stay in WAIT_MEAS and retry on the next tick rather than erroring. */
+                 * Stay in WAIT_MEAS and retry on the next tick. The MEAS_TIMEOUT_MS
+                 * check above will catch it if data never arrives. */
                 return BME680_BUSY;
-                // TODO implement a max number of retries here and eventually fall out to the error state
             }
 
             if (readResult != BME68X_OK) {

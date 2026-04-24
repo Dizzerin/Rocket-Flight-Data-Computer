@@ -22,12 +22,22 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 
 ## Future Improvements and Known Bugs
 
-**Known Bugs**
-- TODO sometimes it will fail to mount the first time or in general, this is because SD cards in SPI mode are very sensitive to clocking etc.  Before launch we should have a way of verifying that the SD card successfully mounted, perhaps changing an LED color or something.
-- Currently there is only one known "bug" which is that the system doesn't seem to support SD card removal and re-insertion while the system remains powered and running.  In this case, the SD card seems to fail to mount on the second, and any subsequent insertions, however it should always work on the first insertion or if the system is booted with the SD card already in.
+**Known Limitations and Bugs**
+- Limitation/Bug: Currently the system doesn't seem to support SD card removal and re-insertion while the system remains powered and running.  In this case, the SD card seems to fail to mount on the second, and any subsequent insertions, however it should usually work on the first insertion or if the system is booted with the SD card already in.
+- Limitation: This code currently only supports SD cards that support SPI mode, typically these cards tend to be less than 8GB.  Furthermore, only some cards and card manufacturers seems to work.  You will likely have the best luck with cards around 1-2GB.
+- Limitation: Currently this code doesn't have LFN (long file name) support enabled, so filenames are limited to using the 8.3 format (8 characters for filename, period, then 3 characters for extension).
+- Potential Bug: Sometimes the SD card will fail to mount the first time, this is probably because SD cards in SPI mode are very sensitive to clocking etc.  This issue seems to be very common for people trying to use SD cards in SPI mode with small microcontrollers such as this.
 
 **Future Improvements**
-- Fix known bugs
+- Fix known bugs listed above.
+- Reduce limitations listed above.
+- Implement LED flash rates based on system state (and state of the DataLogger) and update readme.md
+  - System running – not logging = 500 ms period on, then 250 ms off = 1 second flash period = 1Hz flash rate
+  - System running – SD mounted and logging = 250 ms period on, then 250 ms off = 1/2 second flash period = 2Hz flash rate
+  - System errored = 
+  - Locked up, infinite loop, unpowered, or other general error = stuck on or stuck off
+- Create a define to quickly enable/disable printing the log file data to UART3 as well – perhaps we might need to print it as a slower rate to not saturate the UART bus or overflow buffers, or we may need to increase buffer sizes or implement local software buffering etc.  Look into all of this.
+
 - Could create a custom SPI communication state machine that wraps the lower level HAL library code and change the SPI bus to be non-blocking using DMA or interrupts instead of the current blocking nature.  This would require a decent amount of work though and is not necessary at this time.
 
 
