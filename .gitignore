@@ -1,0 +1,50 @@
+# --- LibreOffice / lock files ---
+.~lock*
+
+# --- Generic temp / backup files ---
+*~
+*.tmp
+*.temp
+*.orig
+#*.bak
+#*.backup
+
+# --- Logs ---
+*.log
+
+# --- OS-generated files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editor / IDE junk ---
+.vscode/
+.idea/
+*.code-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+
+# --- Build / binary outputs (C / embedded) ---
+*.o
+*.d
+*.a
+# keeping the following for now so others can easily take just these files and flash them to their devices
+#*.elf
+#*.bin
+#*.hex
+#*.map
+#*.lst
+
+# --- STM32CubeIDE / Eclipse ---
+.settings/
+.metadata/
+#.cproject
+#.project
+
+# --- Misc ---
+#.cache/
