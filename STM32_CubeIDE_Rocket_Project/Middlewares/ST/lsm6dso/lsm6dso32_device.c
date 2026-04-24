@@ -139,7 +139,10 @@ uint8_t lsm6_init(void)
  */
 uint8_t lsm6_readData(LSM6DSO_Data_t *out)
 {
-  if (!isInitialized || out == NULL) return 1;
+    if (!isInitialized) {
+        myprintf("Cannot read data because device is not initialized.\r\n");
+        return 1;
+    }
 
   out->isAccelDataNew = 0;
   out->isGyroDataNew  = 0;
@@ -150,7 +153,7 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
   lsm6dso32_reg_t reg;
   lsm6dso32_status_reg_get(&dev_ctx, &reg.status_reg);
 
-  // If accelerometer data available, read fresh values
+  // If accelerometer data available, read fresh values, otherwise use cached values from last read
   if (reg.status_reg.xlda) {
       memset(data_raw_acceleration, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_acceleration_raw_get(&dev_ctx, data_raw_acceleration);
@@ -163,7 +166,7 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
   out->accel_mg[1] = acceleration_mg[1];
   out->accel_mg[2] = acceleration_mg[2];
 
-  // If gyro data available, read fresh values
+  // If gyro data available, read fresh values, otherwise use cached values from last read
   if (reg.status_reg.gda) {
       memset(data_raw_angular_rate, 0x00, 3 * sizeof(int16_t));
       lsm6dso32_angular_rate_raw_get(&dev_ctx, data_raw_angular_rate);
@@ -176,7 +179,7 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
   out->gyro_mdps[1] = angular_rate_mdps[1];
   out->gyro_mdps[2] = angular_rate_mdps[2];
 
-  // If temperature data available, read fresh value
+  // If temperature data available, read fresh value, otherwise use cached value from last read
   if (reg.status_reg.tda) {
       memset(&data_raw_temperature, 0x00, sizeof(int16_t));
       lsm6dso32_temperature_raw_get(&dev_ctx, &data_raw_temperature);
@@ -192,7 +195,7 @@ uint8_t lsm6_readData(LSM6DSO_Data_t *out)
 uint8_t lsm6_getAndPrintData(void)
 {
     if (!isInitialized) {
-        myprintf("Cannot read data because device is not initialized.\r\n");
+        myprintf("Cannot read and print data because device is not initialized.\r\n");
         return 1;
     }
 
