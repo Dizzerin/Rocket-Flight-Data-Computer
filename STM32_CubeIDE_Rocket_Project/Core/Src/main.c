@@ -72,7 +72,7 @@ static void MX_SPI1_Init(void);
 static void MX_I2C4_Init(void);
 static void MX_SPI3_Init(void);
 /* USER CODE BEGIN PFP */
-static void LED_Toggle(void);
+static void LED_Task(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -142,7 +142,7 @@ int main(void)
   Scheduler_Init();
   Scheduler_RegisterTask(SD_StateMachine,              100);
   Scheduler_RegisterTask(DataLogger_StateMachine_Task,   5);
-  Scheduler_RegisterTask(LED_Toggle,             500);
+  Scheduler_RegisterTask(LED_Task,                      50);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -545,9 +545,34 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static void LED_Toggle(void)
+/*
+ * LED flash pattern task — registered with the scheduler at 50 ms.
+ *
+ * Flash rates depend on system state:
+ *   Logging     : 250 ms on, 250 ms off (2 Hz, symmetric)
+ *   Not logging : 500 ms on, 250 ms off (~1.3 Hz, asymmetric)
+ *   Error_Handler() fast-blink (100 ms on/off) is handled separately...
+ *   ...inside the Error_Handler() itself using a busy-wait loop.
+ */
+static void LED_Task(void)
 {
-    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    static uint8_t  ledIsOn        = 0;
+    static uint32_t lastChangeTick = 0;
+
+    uint32_t now = HAL_GetTick();
+
+    /* Pick on/off durations based on whether the DataLogger is actively writing */
+    uint32_t onDuration  = DataLogger_IsLogging() ? 250U : 500U;
+    uint32_t offDuration = 250U;
+
+    uint32_t phaseDuration = ledIsOn ? onDuration : offDuration;
+
+    if ((now - lastChangeTick) >= phaseDuration) {
+        ledIsOn = !ledIsOn;
+        HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin,
+                          ledIsOn ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        lastChangeTick = now;
+    }
 }
 /* USER CODE END 4 */
 

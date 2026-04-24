@@ -11,12 +11,13 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 2. [Project Structure](#project-structure)
 3. [Third-Party Libraries](#third-party-libraries)
 4. [Module Architecture](#module-architecture)
-5. [Cooperative Scheduler](#cooperative-scheduler)
-6. [DataLogger](#datalogger)
-7. [SD Card Driver](#sd-card-driver)
-8. [Log File Format](#log-file-format)
-9. [Debug UART Connection](#debug-uart-connection)
-10. [SPI Bus & Pin Assignments](#spi-bus--pin-assignments)
+5. [LED Behavior](#led-behavior)
+6. [Cooperative Scheduler](#cooperative-scheduler)
+7. [DataLogger](#datalogger)
+8. [SD Card Driver](#sd-card-driver)
+9. [Log File Format](#log-file-format)
+10. [Debug UART Connection](#debug-uart-connection)
+11. [SPI Bus & Pin Assignments](#spi-bus--pin-assignments)
 
 ---
 
@@ -31,11 +32,6 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 **Future Improvements**
 - Fix known bugs listed above.
 - Reduce limitations listed above.
-- Implement LED flash rates based on system state (and state of the DataLogger) and update readme.md
-  - System running – not logging = 500 ms period on, then 250 ms off = 1 second flash period = 1Hz flash rate
-  - System running – SD mounted and logging = 250 ms period on, then 250 ms off = 1/2 second flash period = 2Hz flash rate
-  - System errored = 
-  - Locked up, infinite loop, unpowered, or other general error = stuck on or stuck off
 - Create a define to quickly enable/disable printing the log file data to UART3 as well – perhaps we might need to print it as a slower rate to not saturate the UART bus or overflow buffers, or we may need to increase buffer sizes or implement local software buffering etc.  Look into all of this.
 
 - Could create a custom SPI communication state machine that wraps the lower level HAL library code and change the SPI bus to be non-blocking using DMA or interrupts instead of the current blocking nature.  This would require a decent amount of work though and is not necessary at this time.
@@ -51,6 +47,8 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 | [BME680](STM32_CubeIDE_Rocket_Project/UserCode/bme680_device.h) Barometer | SPI3 (8-bit) | `UserCode/bme680_device.c/.h` | Pressure, temperature, humidity — forced-mode, 20 Hz triggered |
 | SD Card | SPI2 (8-bit) | `UserCode/SD_Card.c/.h` | FAT filesystem via FatFs — CSV data logging |
 | LED | GPIO (PB3) | `Core/Src/main.c` | Heartbeat blink (1 Hz); fast-blink on fatal error |
+
+> **Note on LED:** PB3 is a test pad only in the current PCB schematic — however the code is setup for an LED to be connected to this pin.
 
 > **IMU scale configuration:** The accelerometer and gyroscope full-scale ranges are set by two `#define`s at the top of [`lsm6dso32_device.h`](STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h). Change only the `#define` — the correct conversion function is selected automatically at init time.
 >
@@ -131,6 +129,23 @@ main.c  (init + main loop)
         │
         └── LED_Toggle                    [every 500 ms]
 ```
+
+---
+
+## LED Behavior
+
+**Pin:** PB3 (`LED_Pin`, `LED_GPIO_Port`) — active-high. Note: PB3 is a test pad only in the current PCB schematic and is not connected to a discrete LED component.
+
+The LED flash pattern indicates current system state at a glance:
+
+| State | Pattern | Period | Rate |
+|---|---|---|---|
+| Running — not logging (no SD card or SD not yet mounted) | 500 ms on, 250 ms off | 750 ms | ~1.3 Hz |
+| Running — actively logging to SD card | 250 ms on, 250 ms off | 500 ms | 2 Hz |
+| Fatal error (`Error_Handler()`) | 100 ms on, 100 ms off | 200 ms | 5 Hz |
+| Locked up, infinite loop, unpowered | Stuck on or stuck off | — | — |
+
+The LED task (`LED_Task` in `main.c`) is registered with the scheduler at a 50 ms poll interval and manages its own asymmetric on/off timing internally using `HAL_GetTick()`. It queries `DataLogger_IsLogging()` each cycle to select the correct flash pattern. The `Error_Handler()` fast-blink runs as a busy-wait loop after interrupts are disabled, so it does not depend on the scheduler or SysTick.
 
 ---
 

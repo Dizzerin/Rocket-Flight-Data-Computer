@@ -263,6 +263,11 @@ static void writeCSVRow(uint32_t writeTimestamp)
  * Public API
  * ========================================================================= */
 
+uint8_t DataLogger_IsLogging(void)
+{
+    return (dlState == DL_LOGGING) ? 1U : 0U;
+}
+
 void DataLogger_Init(void)
 {
     bmeHasReturnedFirstReading = 0;

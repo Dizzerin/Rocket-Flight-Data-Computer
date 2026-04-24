@@ -26,6 +26,8 @@
 #ifndef DATALOGGER_H_
 #define DATALOGGER_H_
 
+#include <stdint.h>
+
 /* Milliseconds between BME680 measurement triggers (20 Hz = 50 ms) */
 #define DATALOGGER_BME_TRIGGER_MS   50U
 
@@ -41,5 +43,9 @@
 
 void DataLogger_Init(void);
 void DataLogger_StateMachine_Task(void);   /* Single update task — register at 5 ms */
+
+/* Returns 1 if the DataLogger is actively writing to an open log file, 0 otherwise.
+ * Used by the LED task to select the appropriate flash pattern. */
+uint8_t DataLogger_IsLogging(void);
 
 #endif /* DATALOGGER_H_ */
