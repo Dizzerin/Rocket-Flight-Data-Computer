@@ -76,9 +76,9 @@ static uint32_t      lastCsvWriteTick   = 0;
 static uint32_t      lastSyncTick       = 0;
 
 /* Number of BME680 readings to average for the ground-level pressure reference (P0).
- * At 20 Hz, 100 samples = 5 seconds of stationary pad data. */
+ * At 20 Hz, 100 samples = 5 seconds of stationary pad data.
  * At 20 Hz, 60 samples = 3 seconds of stationary pad data. */
-#define GROUND_PRESSURE_NUM_SAMPLES  100U
+#define GROUND_PRESSURE_NUM_SAMPLES  60U
 
 static float         groundPressure_hPa        = 0.0f;  /* averaged ground-level pressure (P0), set after calibration */
 static uint8_t       hasGroundPressure         = 0;     /* 1 once GROUND_PRESSURE_NUM_SAMPLES readings have been averaged */
