@@ -27,24 +27,42 @@ desktop.ini
 *.swo
 
 # Emacs
-*~
+#*~
+
 
 # --- Build / binary outputs (C / embedded) ---
 *.o
 *.d
 *.a
+*.su
+*.cyclo
+*.map
+*.lst
 # keeping the following for now so others can easily take just these files and flash them to their devices
 #*.elf
 #*.bin
 #*.hex
-#*.map
-#*.lst
 
 # --- STM32CubeIDE / Eclipse ---
 .settings/
 .metadata/
+# Keep these!
 #.cproject
 #.project
+
+# Ignore everything in build folder... but...
+STM32_CubeIDE_Rocket_Project/Debug/*
+STM32_CubeIDE_Rocket_Project/Release/*
+# ...But keep directories themselves... and...
+!STM32_CubeIDE_Rocket_Project/Debug/
+!STM32_CubeIDE_Rocket_Project/Release/
+# ...Allow specific files
+!STM32_CubeIDE_Rocket_Project/Debug/*.bin
+!STM32_CubeIDE_Rocket_Project/Debug/*.hex
+!STM32_CubeIDE_Rocket_Project/Debug/*.elf
+!STM32_CubeIDE_Rocket_Project/Release/*.bin
+!STM32_CubeIDE_Rocket_Project/Release/*.hex
+!STM32_CubeIDE_Rocket_Project/Release/*.elf
 
 # --- Misc ---
 #.cache/
