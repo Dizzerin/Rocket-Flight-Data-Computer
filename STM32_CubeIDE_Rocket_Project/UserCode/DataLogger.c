@@ -12,6 +12,8 @@
  *   - Write CSV rows at the data logger rate; BME680 columns repeat the last valid reading
  *     along with the timestamp of when that BME680 reading was actually captured.
  *   - Detect SD card removal and cleanly abandon the open file handle.
+ *   - Compute an estimated altitude_AGL_ft using the barometric formula and log it, 
+ *     using an averaged ground-level pressure as the reference P0.
  *
  * Internal state machine (DL_State_t):
  *   DL_IDLE    — Sensors polled; SD card not mounted or no file open.
@@ -73,9 +75,16 @@ static uint32_t      bmeLastTrigger     = 0;
 static uint32_t      lastCsvWriteTick   = 0;
 static uint32_t      lastSyncTick       = 0;
 
-static float         groundPressure_hPa = 0.0f;  /* pressure at power-on ground level (P0) */
-static uint8_t       hasGroundPressure  = 0;     /* 1 once the first valid BME reading is captured as ground ref */
-static float         altitude_AGL_ft    = 0.0f;  /* current AGL altitude in feet */
+/* Number of BME680 readings to average for the ground-level pressure reference (P0).
+ * At 20 Hz, 100 samples = 5 seconds of stationary pad data. */
+ * At 20 Hz, 60 samples = 3 seconds of stationary pad data. */
+#define GROUND_PRESSURE_NUM_SAMPLES  100U
+
+static float         groundPressure_hPa        = 0.0f;  /* averaged ground-level pressure (P0), set after calibration */
+static uint8_t       hasGroundPressure         = 0;     /* 1 once GROUND_PRESSURE_NUM_SAMPLES readings have been averaged */
+static float         groundPressureSum         = 0.0f;  /* running sum for P0 averaging */
+static uint16_t      groundPressureSampleCount = 0;     /* number of readings accumulated so far */
+static float         altitude_AGL_ft           = 0.0f;  /* current AGL altitude in feet */
 
 /* =========================================================================
  * Internal helpers
@@ -260,8 +269,12 @@ void DataLogger_Init(void)
     isFileOpen                 = 0;
     dlState                    = DL_IDLE;
     prevSdState                = SD_GetState();
+
+    // Initialize ground pressure averaging and altitude data
     hasGroundPressure          = 0;
     groundPressure_hPa         = 0.0f;
+    groundPressureSum          = 0.0f;
+    groundPressureSampleCount  = 0;
     altitude_AGL_ft            = 0.0f;
 
     bme680_setGasEnabled(0);         /* Gas sensor not needed for rocketry */
@@ -300,10 +313,12 @@ void DataLogger_StateMachine_Task(void)
             bmeHasReturnedFirstReading = 0;
             memset(&bmeCache, 0, sizeof(bmeCache));
 
-            // Reset ground pressure so a fresh baseline is captured on the next mount.
-            hasGroundPressure  = 0;
-            groundPressure_hPa = 0.0f;
-            altitude_AGL_ft    = 0.0f;
+            // Reset ground pressure so a fresh calibration window runs on the next mount.
+            hasGroundPressure         = 0;
+            groundPressure_hPa        = 0.0f;
+            groundPressureSum         = 0.0f;
+            groundPressureSampleCount = 0;
+            altitude_AGL_ft           = 0.0f;
         }
         prevSdState = currentSdState;
     }
@@ -317,25 +332,30 @@ void DataLogger_StateMachine_Task(void)
         bmeCache = bme680_getData();
         bmeHasReturnedFirstReading = 1;
 
-        // TODO make this average the first 5 seconds of readings or something for a much more accurate baseline, and then only compute altitude after that 
-        // Capture first pressure reading as ground reference (P0) for barometric altitude calculations.
-        /* All subsequent AGL altitude values are relative to this baseline. */
+        /* Accumulate pressure readings to form an averaged ground-level reference (P0).
+         * altitude_AGL_ft in the log file stays at 0.0 during this time while gathering 
+         * and averaging data for GROUND_PRESSURE_NUM_SAMPLES (afterall, we are assuming
+         * the rocket is indeed at 0 ft AGL during this time). */
         if (!hasGroundPressure && bmeCache.pressure_hPa > 0.0f) {
-            groundPressure_hPa = bmeCache.pressure_hPa;
-            hasGroundPressure  = 1;
+            groundPressureSum += bmeCache.pressure_hPa;
+            groundPressureSampleCount++;
+            if (groundPressureSampleCount >= GROUND_PRESSURE_NUM_SAMPLES) {
+                groundPressure_hPa = groundPressureSum / (float)groundPressureSampleCount;
+                hasGroundPressure  = 1;
+            }
         }
 
-        // TODO verify the results and accuracy of this computation
-        // Compute estimated AGL altitude using the simplified ISA barometric formula:
-        //   h_meters = 44330 * (1 - (P / P0)^0.1903)
-        //   Then convert meters to feet (* 3.28084)
-        // Note: This formula only gives an estimated AGL altitude and assumes a standard temperature lapse rate.
-        // Post processing could compute a more accurate altitude using the raw pressure
-        // and temperature data, and averaging, filtering, and compensating for temerature effects,
-        // but this is good enough for a rough estimate and its nice to be able to see this estimated
-        // data in the log at a glance with no post-processing, and having this data local could be
-        // useful for detecting apogee and deploying a parachute etc., though I suppose you could
-        // do that with just raw pressure data as well, and you would still want some filtering/averaging.
+        /* Compute estimated AGL altitude using the simplified ISA barometric formula:
+         *   h_meters = 44330 * (1 - (P / P0)^0.1903)
+         *   Then convert meters to feet (* 3.28084).
+         * Note: This assumes a standard temperature lapse rate!
+         * Post processing could compute a more accurate altitude using the raw pressure
+         * and temperature data, and averaging, filtering, and compensating for temerature effects,
+         * but this is good enough for a rough estimate and its nice to be able to see this estimated
+         * data in the log at a glance with no post-processing, and having this data local could be
+         * useful for detecting apogee and deploying a parachute etc., though I suppose you could
+         * do that with just raw pressure data as well, and you would still want some filtering/averaging.
+         */
         if (hasGroundPressure) {
             altitude_AGL_ft = 44330.0f
                               * (1.0f - powf(bmeCache.pressure_hPa / groundPressure_hPa, 0.1903f))

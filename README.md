@@ -291,13 +291,13 @@ WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_Ne
 | 14 | `Pressure_hPa` | hPa | `%.2f` | 300 | 1100 | ~1013 hPa at sea level; ~950 hPa at 500 m altitude; **empty until first reading** |
 | 15 | `BME_Temp_C` | °C | `%.2f` | −40 | +85 | ~20–30 °C indoors; **empty until first reading** |
 | 16 | `Humidity_pctRH` | %RH | `%.2f` | 0 | 100 | ~30–60 %RH indoors; **empty until first reading** |
-| 17 | `Altitude_AGL_ft` | ft | `%.2f` | — | — | AGL altitude from barometric formula; 0.00 at the first valid BME680 reading (ground reference); **empty until first reading** |
+| 17 | `Altitude_AGL_ft` | ft | `%.2f` | — | — | AGL altitude from barometric formula; reads 0.00 during the ground pressure calibration window; altitude computation begins once `GROUND_PRESSURE_NUM_SAMPLES` BME680 readings have been averaged into P₀; **empty until first BME reading** |
 
 **Notes:**
 - Columns 13–17 are blank (empty fields) until the BME680 completes its first measurement.
 - The `Accel_New`, `Gyro_New`, and `Temp_New` flags indicate whether the LSM6DSO's data-ready status register reported fresh data at the time of that specific SPI read. Even when `0`, the value columns contain the most recent valid reading.
 - `WriteTime_ms` and `IMU_Timestamp_ms` could differ by 1–2 ms due to SPI read overhead.
-- `Altitude_AGL_ft` is computed on-board each time a new BME680 reading arrives using `h = 44330 × (1 − (P/P₀)^0.1903) × 3.28084`. P₀ is captured from the first valid pressure reading after power-on or SD card insertion.
+- `Altitude_AGL_ft` is computed on-board using `h = 44330 × (1 − (P/P₀)^0.1903) × 3.28084`. P₀ is the average of the first `GROUND_PRESSURE_NUM_SAMPLES` valid BME680 pressure readings after power-on or SD card insertion.
 - Maximum CSV row size is approximately 147 characters (160-byte buffer allocated with 13-byte margin).
 
 ### Example Row
