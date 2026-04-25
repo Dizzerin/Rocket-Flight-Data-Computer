@@ -6,18 +6,18 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 
 ## Table of Contents
 
-[Future Improvements and Known Bugs](#future-improvements-and-known-bugs)
-[Hardware Overview](#hardware-overview)
-[Project Structure](#project-structure)
-[Third-Party Libraries](#third-party-libraries)
-[Module Architecture](#module-architecture)
-[LED Behavior](#led-behavior)
-[Cooperative Scheduler](#cooperative-scheduler)
-[DataLogger](#datalogger)
-[SD Card Driver](#sd-card-driver)
-[Log File Format](#log-file-format)
-[Debug UART Connection](#debug-uart-connection)
-[SPI Bus & Pin Assignments](#spi-bus--pin-assignments)
+0. [Future Improvements and Known Bugs](#future-improvements-and-known-bugs)
+1. [Hardware Overview](#hardware-overview)
+2. [Project Structure](#project-structure)
+3. [Third-Party Libraries](#third-party-libraries)
+4. [Module Architecture](#module-architecture)
+5. [LED Behavior](#led-behavior)
+6. [Cooperative Scheduler](#cooperative-scheduler)
+7. [DataLogger](#datalogger)
+8. [SD Card Driver](#sd-card-driver)
+9. [Log File Format](#log-file-format)
+10. [Debug UART Connection](#debug-uart-connection)
+11. [SPI Bus & Pin Assignments](#spi-bus--pin-assignments)
 
 ---
 
