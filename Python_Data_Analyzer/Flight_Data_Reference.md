@@ -120,7 +120,7 @@ At FS=±32g, the LSB is 0.976 mg, so 1.6 mg RMS ≈ 1.6 LSB of analog noise. The
 
 **Zero-g offset:**
 
-Every MEMS accelerometer has a constant DC offset at true zero acceleration. The LSM6DSO32 datasheet specifies ±20 mg typical. This means the X or Y axis can read up to ±20 mg even when perfectly level. This can be calibrated out the same way as gyro bias (see Section 4).
+Every MEMS accelerometer has a constant DC offset at true zero acceleration. The LSM6DSO32 datasheet specifies ±20 mg typical. This means the X or Y axis can read up to ±20 mg even when perfectly level. This can be calibrated out the same way as gyro bias (see Section 4 [Gyroscope Data — Interpreting & Error Budget](#4-gyroscope-data--interpreting--error-budget))
 
 **Summary table:**
 
