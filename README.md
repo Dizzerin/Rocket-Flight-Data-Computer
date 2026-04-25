@@ -66,14 +66,27 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 | SD Card | SPI2 (8-bit) | `UserCode/SD_Card.c/.h` | FAT filesystem via FatFs — CSV data logging |
 | LED | GPIO (PB3) | `Core/Src/main.c` | Heartbeat blink (1 Hz); fast-blink on fatal error |
 
-> **Note on LED:** PB3 is a test pad only in the current PCB schematic — however the code is setup for an LED to be connected to this pin.
+---
 
-> **IMU scale configuration:** The accelerometer and gyroscope full-scale ranges are set by two `#define`s at the top of [`lsm6dso32_device.h`](STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h). Change only the `#define` — the correct conversion function is selected automatically at init time.
->
-> | Define | Default | Options |
-> |---|---|---|
-> | `LSM6DSO_ACCEL_FS` | `LSM6DSO32_16g` | `LSM6DSO32_4g` / `_8g` / `_16g` / `_32g` |
-> | `LSM6DSO_GYRO_FS` | `LSM6DSO32_2000dps` | `LSM6DSO32_125dps` / `_250dps` / `_500dps` / `_1000dps` / `_2000dps` |
+#### Note on the LED:
+- PB3 is a test pad only in the current PCB schematic — however the code is setup for an LED to be connected to this pin.
+
+#### IMU scale configuration:
+The accelerometer and gyroscope full-scale ranges are set by two `#define`s at the top of [`lsm6dso32_device.h`](STM32_CubeIDE_Rocket_Project/Middlewares/ST/lsm6dso/lsm6dso32_device.h). Change only the `#define` — the correct conversion function is selected automatically at init time.
+
+| Define | Default | Options |
+|---|---|---|
+| `LSM6DSO_ACCEL_FS` | `LSM6DSO32_16g` | `LSM6DSO32_4g` / `_8g` / `_16g` / `_32g` |
+| `LSM6DSO_GYRO_FS` | `LSM6DSO32_2000dps` | `LSM6DSO32_125dps` / `_250dps` / `_500dps` / `_1000dps` / `_2000dps` |
+
+---
+
+#### Note on Dynamic Pressure Effects and PCB Placement in Rocket
+If the BME680 is in a sealed or partially-sealed enclosure on the rocket, ram air pressure at high velocity can add a stagnation pressure on top of the static pressure, making the sensor read higher than true static pressure and therefore lower than true altitude. For a rocket traveling at 100 m/s (360 km/h), the dynamic pressure is:
+
+q = 0.5 × ρ × v² = 0.5 × 1.225 × 100² ≈ 6125 Pa = 61 hPa
+
+This would cause a significant altitude error. To avoid this, the sensor enclosure should be vented with a small port facing perpendicular to the airflow (not forward-facing), so it sees only static pressure.
 
 ---
 
