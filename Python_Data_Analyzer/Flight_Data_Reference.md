@@ -298,6 +298,19 @@ Where:
 - `P₀` = average of the first `GROUND_PRESSURE_NUM_SAMPLES` BME680 pressure readings
 - `0.1903` = `(R × L) / (g × M)` using ISA constants (lapse rate L = 0.0065 K/m, R = 8.314 J/mol·K, g = 9.807 m/s², M = 0.02896 kg/mol)
 
+#### Notes on Temperature Compensation
+The BME680 already handles its own internal temperature compensation — the pressure_hPa value coming out of bme680_getData() is fully compensated using the on-chip temperature sensor and the factory calibration coefficients baked into the Bosch SensorAPI. You don't need to do anything extra there.
+
+The temperature compensation for altitude is a different and separate issue. The barometric formula assumes a fixed temperature lapse rate (ISA standard atmosphere: 15°C at sea level, dropping 6.5°C/km). If the actual air temperature at your launch site differs from the ISA model, the formula introduces a small altitude error. This is not something the BME680 compensates for — it's a property of the atmosphere model, not the sensor.
+
+For a model rocket flight, this error is small enough it can be ignored unless you want more accurate readings:
+ - `Error ≈ (T_actual - T_ISA) / T_ISA × altitude`
+
+Example: 30°C day (303 K) vs ISA 15°C (288 K) at 300 m AGL:
+ - `Error ≈ (303 - 288) / 288 × 300 m ≈ 15.6 m ≈ 51 ft`
+
+If you want to remove this error, you will need to account for non-standard lapse rates.
+
 ### Computing AGL Altitude in Post-Processing
 
 The altitude computation used in the firmware provides a good estimated altitude but assumes a standard temperature lapse rate and doesn't account for actual atmospheric conditions.
