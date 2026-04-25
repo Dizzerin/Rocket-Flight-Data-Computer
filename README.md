@@ -30,10 +30,30 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 - Potential Bug: Sometimes the SD card will fail to mount the first time, this is probably because SD cards in SPI mode are very sensitive to clocking etc.  This issue seems to be very common for people trying to use SD cards in SPI mode with small microcontrollers such as this.
 
 **Future Improvements**
-- Fix known bugs listed above.
-- Reduce limitations listed above.
-- Could create a custom SPI communication state machine that wraps the lower level HAL library code and change the SPI bus to be non-blocking using DMA or interrupts instead of the current blocking nature.  This would require a decent amount of work though and is not necessary at this time.
-
+- General
+     - Fix known bugs listed above.
+     - Reduce limitations listed above.
+- SPI
+     - Could create a custom SPI communication state machine that wraps the lower level HAL library code and change the SPI bus to be non-blocking using DMA or interrupts instead of the current blocking nature.  This would require a decent amount of work though and is not necessary at this time.
+- LSM6DSO
+     - Could experiment with increasing the SPI clock rate if a higher ODR (output data rate) is desired, and determine the max communication rate with the sensor.
+- SD Card
+     - Could experiment with increasing the SPI clock rate, and determine the max communication rate supported.
+     - Verify support for having multiple files open and writing to multiple files at a time.  This could be useful in the future if we add a camera module and want to save/record pictures or videos during a flight.
+- UART3 Debug Console
+     - Could implement much better buffering and data handling, consider implementing software ring buffer.
+     - Could rename the myprintf() function to something better and optimize it more.
+     - Could create a debugPrint() function which is compiler optimized and will only print if “#define DEBUG” is defined.
+- Camera
+     - Add support for a camera module such as the ArduCam
+- PCB improvements next iteration
+     - Consider adding a button to start and stop data logging
+     - Remove unused/unnecessary sensors
+     - Add series current limiting resistors to RGB LED
+     - Fix USB issue
+     - Consider adding active control capabilities
+- Python Data Analysis (post processing the log file)
+     - Create the python data processor.  For more details on this see [Python Data Processor README](/Python_Data_Analyzer/README.md) and the [Flight Data Reference](/Python_Data_Analyzer/Flight_Data_Reference.md) documents.
 
 ## Hardware Overview
 
@@ -328,6 +348,8 @@ WriteTime_ms,IMU_Timestamp_ms,Accel_New,Accel_X_mg,Accel_Y_mg,Accel_Z_mg,Gyro_Ne
 ```
 12345,12344,1,23.50,-15.25,998.00,1,120.30,-45.10,30.20,1,27.43,12300,1013.25,24.61,52.30,125.48
 ```
+
+For even more details on this log file, see the [Flight Data Reference](/Python_Data_Analyzer/Flight_Data_Reference.md) document.
 
 ---
 
