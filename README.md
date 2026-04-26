@@ -47,11 +47,12 @@ A flight data logger for model rockets built around the **STM32H743VGT6** microc
 - Camera
      - Add support for a camera module such as the ArduCam
 - PCB improvements next iteration
+     - Add momentary buttons for BOOT0 and NRST pins
      - Consider adding a button to start and stop data logging
      - Remove unused/unnecessary sensors
      - Add series current limiting resistors to RGB LED
      - Fix USB issue
-     - Consider adding active control capabilities
+     - Consider adding active control capabilities - servos etc.
 - Python Data Analysis (post processing the log file)
      - Create the python data processor.  For more details on this see [Python Data Processor README](/Python_Data_Analyzer/README.md) and the [Flight Data Reference](/Python_Data_Analyzer/Flight_Data_Reference.md) documents.
 
